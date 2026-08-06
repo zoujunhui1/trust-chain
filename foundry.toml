@@ -4,3 +4,11 @@ out = "out"
 libs = ["lib"]
 
 # See more config options https://github.com/foundry-rs/foundry/blob/master/crates/config/README.md#all-options
+
+# RPC 别名：部署时用 --rpc-url sepolia 即可，实际地址从 .env 读取
+[rpc_endpoints]
+sepolia = "${SEPOLIA_RPC_URL}"
+
+# Etherscan 验证（可选）：有 API key 时 forge 才能自动验证合约源码
+[etherscan]
+sepolia = { key = "${ETHERSCAN_API_KEY}" }

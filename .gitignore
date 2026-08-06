@@ -23,3 +23,6 @@ keystore/
 .idea/
 .vscode/
 *.iml
+
+# 允许提交示例模板
+!.env.example
