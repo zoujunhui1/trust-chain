@@ -3,9 +3,9 @@ cache/
 out/
 
 # Broadcast logs / 部署广播日志（本地模拟与 dry-run 不提交）
-!/broadcast
-/broadcast/*/31337/
-/broadcast/**/dry-run/
+!/contracts/broadcast
+/contracts/broadcast/*/31337/
+/contracts/broadcast/**/dry-run/
 
 # Foundry docs output / 文档生成产物
 docs/
