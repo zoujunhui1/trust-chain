@@ -2,6 +2,7 @@ import { Routes, Route, Link } from 'react-router-dom'
 import CampaignList from './pages/CampaignList'
 import CampaignDetail from './pages/CampaignDetail'
 import TransparencyDashboard from './pages/TransparencyDashboard'
+import CreateCampaign from './pages/CreateCampaign'
 import WalletButton from './components/WalletButton'
 import { WalletProvider } from './lib/wallet'
 
@@ -14,6 +15,7 @@ function App() {
           <div className="flex items-center gap-8 text-sm font-medium text-muted">
             <Link to="/">Campaigns</Link>
             <Link to="/transparency">Transparency</Link>
+            <Link to="/create">Create Campaign</Link>
             <WalletButton />
           </div>
         </nav>
@@ -22,6 +24,7 @@ function App() {
           <Route path="/" element={<CampaignList />} />
           <Route path="/campaigns/:id" element={<CampaignDetail />} />
           <Route path="/transparency" element={<TransparencyDashboard />} />
+          <Route path="/create" element={<CreateCampaign />} />
         </Routes>
       </div>
     </WalletProvider>
