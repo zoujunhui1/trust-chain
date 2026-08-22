@@ -58,6 +58,20 @@ type CharityView struct {
 	UpdatedBlock uint64 `json:"updatedBlock"`
 }
 
+// ActivityView 是全局活动流水的一行对外视图。
+// ActivityView is one row of the global activity feed's outward view.
+type ActivityView struct {
+	ID           uint64    `json:"id"`
+	CampaignID   uint64    `json:"campaignId"`
+	EventType    string    `json:"eventType"`
+	Amount       *string   `json:"amount"`       // wei; null for non-monetary events
+	MilestoneIdx *uint32   `json:"milestoneIdx"` // null unless milestone-scoped
+	BlockNumber  uint64    `json:"blockNumber"`
+	TxHash       string    `json:"txHash"`
+	LogIndex     uint32    `json:"logIndex"`
+	CreatedAt    time.Time `json:"createdAt"`
+}
+
 // ListCampaigns 返回活动列表，按创建区块倒序（最新在前）。
 // ListCampaigns returns campaigns, newest first (by creation block).
 func (s *Store) ListCampaigns(ctx context.Context, limit, offset int) ([]CampaignView, error) {
@@ -174,4 +188,62 @@ func (s *Store) GetCharity(ctx context.Context, addr string) (c CharityView, fou
 	default:
 		return CharityView{}, false, fmt.Errorf("store: 查机构失败 / get charity: %w", err)
 	}
+}
+
+// ListCharities 返回所有见过的机构（含已撤销的），按最后变更区块倒序。
+// ListCharities returns every charity ever seen (including revoked ones), newest change first.
+func (s *Store) ListCharities(ctx context.Context, limit, offset int) ([]CharityView, error) {
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT address, verified, updated_block FROM charities
+		ORDER BY updated_block DESC
+		LIMIT ? OFFSET ?`, limit, offset)
+	if err != nil {
+		return nil, fmt.Errorf("store: 查机构列表失败 / list charities: %w", err)
+	}
+	defer rows.Close()
+
+	list := []CharityView{}
+	for rows.Next() {
+		var c CharityView
+		if err := rows.Scan(&c.Address, &c.Verified, &c.UpdatedBlock); err != nil {
+			return nil, fmt.Errorf("store: 扫描机构失败 / scan charity: %w", err)
+		}
+		list = append(list, c)
+	}
+	return list, rows.Err()
+}
+
+// ListActivity 返回全局活动流水，按区块+日志序号倒序（最新在前）。
+// ListActivity returns the global activity feed, newest first.
+func (s *Store) ListActivity(ctx context.Context, limit, offset int) ([]ActivityView, error) {
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT id, campaign_id, event_type, amount, milestone_idx, block_number, tx_hash, log_index, created_at
+		FROM activity_events
+		ORDER BY block_number DESC, log_index DESC
+		LIMIT ? OFFSET ?`, limit, offset)
+	if err != nil {
+		return nil, fmt.Errorf("store: 查活动流水失败 / list activity: %w", err)
+	}
+	defer rows.Close()
+
+	list := []ActivityView{}
+	for rows.Next() {
+		var a ActivityView
+		var amount sql.NullString
+		var idx sql.NullInt64
+		if err := rows.Scan(
+			&a.ID, &a.CampaignID, &a.EventType, &amount, &idx, &a.BlockNumber, &a.TxHash, &a.LogIndex, &a.CreatedAt,
+		); err != nil {
+			return nil, fmt.Errorf("store: 扫描活动流水失败 / scan activity: %w", err)
+		}
+		if amount.Valid {
+			a.Amount = &amount.String
+		}
+		if idx.Valid {
+			v := uint32(idx.Int64)
+			a.MilestoneIdx = &v
+		}
+		list = append(list, a)
+	}
+	return list, rows.Err()
 }

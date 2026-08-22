@@ -98,7 +98,7 @@ func (ix *Indexer) Run(ctx context.Context) error {
 			to = safeHead
 		}
 
-		if err := ix.processRange(ctx, from, to); err != nil {
+		if err := ix.ProcessRange(ctx, from, to); err != nil {
 			// 处理失败不推进游标：下一轮重扫同一段（幂等保证不会重复）。
 			// On failure don't advance the cursor: re-scan next round (idempotent).
 			fmt.Printf("[indexer] 处理 [%d,%d] 失败，将重试 / process failed: %v\n", from, to, err)
@@ -148,9 +148,12 @@ func (ix *Indexer) sleep(ctx context.Context) error {
 	}
 }
 
-// processRange 拉取 [from,to] 的日志并按顺序逐条处理。
-// processRange fetches logs in [from,to] and handles them in order.
-func (ix *Indexer) processRange(ctx context.Context, from, to uint64) error {
+// ProcessRange 拉取 [from,to] 的日志并按顺序逐条处理。导出是为了一次性的
+// 补录脚本（cmd/backfill-activity）能复用同一套解析/落库逻辑。
+// ProcessRange fetches logs in [from,to] and handles them in order. Exported
+// so one-off backfill tooling (cmd/backfill-activity) can reuse the same
+// parse/persist logic without duplicating it.
+func (ix *Indexer) ProcessRange(ctx context.Context, from, to uint64) error {
 	logs, err := ix.chain.FilterLogs(ctx, from, to)
 	if err != nil {
 		return err
@@ -223,7 +226,13 @@ func (ix *Indexer) onCampaignCreated(ctx context.Context, lg *types.Log) error {
 	for i, m := range msRaw {
 		ms[i] = store.Milestone{CampaignID: c.ID, Idx: uint32(i), Amount: m.Amount}
 	}
-	return ix.store.InsertCampaign(ctx, c, ms)
+	if err := ix.store.InsertCampaign(ctx, c, ms); err != nil {
+		return err
+	}
+	return ix.store.InsertActivity(ctx, store.ActivityEvent{
+		CampaignID: c.ID, EventType: "CampaignCreated",
+		BlockNumber: lg.BlockNumber, TxHash: lg.TxHash.Hex(), LogIndex: uint32(lg.Index),
+	})
 }
 
 func (ix *Indexer) onDonationReceived(ctx context.Context, lg *types.Log) error {
@@ -231,13 +240,20 @@ func (ix *Indexer) onDonationReceived(ctx context.Context, lg *types.Log) error 
 	if err != nil {
 		return err
 	}
-	return ix.store.InsertDonation(ctx, store.Donation{
+	d := store.Donation{
 		CampaignID:  ev.CampaignId.Uint64(),
 		Donor:       lowerAddr(ev.Donor),
 		Amount:      ev.Amount,
 		BlockNumber: lg.BlockNumber,
 		TxHash:      lg.TxHash.Hex(),
 		LogIndex:    uint32(lg.Index),
+	}
+	if err := ix.store.InsertDonation(ctx, d); err != nil {
+		return err
+	}
+	return ix.store.InsertActivity(ctx, store.ActivityEvent{
+		CampaignID: d.CampaignID, EventType: "DonationReceived", Amount: d.Amount,
+		BlockNumber: d.BlockNumber, TxHash: d.TxHash, LogIndex: d.LogIndex,
 	})
 }
 
@@ -246,7 +262,15 @@ func (ix *Indexer) onMilestoneReleased(ctx context.Context, lg *types.Log) error
 	if err != nil {
 		return err
 	}
-	return ix.store.MarkMilestoneReleased(ctx, ev.CampaignId.Uint64(), uint32(ev.MilestoneIndex.Uint64()))
+	idx := uint32(ev.MilestoneIndex.Uint64())
+	if err := ix.store.MarkMilestoneReleased(ctx, ev.CampaignId.Uint64(), idx); err != nil {
+		return err
+	}
+	return ix.store.InsertActivity(ctx, store.ActivityEvent{
+		CampaignID: ev.CampaignId.Uint64(), EventType: "MilestoneReleased",
+		Amount: ev.Amount, MilestoneIdx: &idx,
+		BlockNumber: lg.BlockNumber, TxHash: lg.TxHash.Hex(), LogIndex: uint32(lg.Index),
+	})
 }
 
 func (ix *Indexer) onReceiptSubmitted(ctx context.Context, lg *types.Log) error {
@@ -254,8 +278,14 @@ func (ix *Indexer) onReceiptSubmitted(ctx context.Context, lg *types.Log) error 
 	if err != nil {
 		return err
 	}
-	return ix.store.MarkMilestoneProven(ctx,
-		ev.CampaignId.Uint64(), uint32(ev.MilestoneIndex.Uint64()), hashHex(ev.ReceiptHash))
+	idx := uint32(ev.MilestoneIndex.Uint64())
+	if err := ix.store.MarkMilestoneProven(ctx, ev.CampaignId.Uint64(), idx, hashHex(ev.ReceiptHash)); err != nil {
+		return err
+	}
+	return ix.store.InsertActivity(ctx, store.ActivityEvent{
+		CampaignID: ev.CampaignId.Uint64(), EventType: "ReceiptSubmitted", MilestoneIdx: &idx,
+		BlockNumber: lg.BlockNumber, TxHash: lg.TxHash.Hex(), LogIndex: uint32(lg.Index),
+	})
 }
 
 func (ix *Indexer) onCampaignCompleted(ctx context.Context, lg *types.Log) error {
@@ -263,7 +293,13 @@ func (ix *Indexer) onCampaignCompleted(ctx context.Context, lg *types.Log) error
 	if err != nil {
 		return err
 	}
-	return ix.store.MarkCampaignCompleted(ctx, ev.CampaignId.Uint64())
+	if err := ix.store.MarkCampaignCompleted(ctx, ev.CampaignId.Uint64()); err != nil {
+		return err
+	}
+	return ix.store.InsertActivity(ctx, store.ActivityEvent{
+		CampaignID: ev.CampaignId.Uint64(), EventType: "CampaignCompleted",
+		BlockNumber: lg.BlockNumber, TxHash: lg.TxHash.Hex(), LogIndex: uint32(lg.Index),
+	})
 }
 
 // onCharity 处理认证/撤销两个事件（结构相同，只是 verified 不同）。

@@ -78,3 +78,24 @@ CREATE TABLE IF NOT EXISTS donations (
   KEY idx_campaign (campaign_id),
   KEY idx_donor (donor)
 ) ENGINE=InnoDB COMMENT='逐笔捐款流水(幂等唯一键) / per-donation ledger';
+
+-- 全局活动流水：每处理一个 campaign 相关事件都追加一行，专供 Transparency
+-- Dashboard 的活动表用（campaigns/milestones 只存"当前状态"，历史会被覆盖）。
+-- Global activity feed: one append-only row per campaign-scoped event, purely
+-- for the Transparency Dashboard's activity table (campaigns/milestones only
+-- hold current state and get overwritten, so this is the only history).
+CREATE TABLE IF NOT EXISTS activity_events (
+  id             BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '自增主键 / surrogate pk',
+  campaign_id    BIGINT UNSIGNED NOT NULL COMMENT '所属活动 id / campaign id',
+  event_type     VARCHAR(32)     NOT NULL COMMENT 'CampaignCreated/DonationReceived/MilestoneReleased/ReceiptSubmitted/CampaignCompleted',
+  amount         DECIMAL(65,0)   NULL COMMENT '捐款/放款金额(wei)；其余事件类型为 NULL / wei, NULL for non-monetary events',
+  milestone_idx  INT UNSIGNED    NULL COMMENT '里程碑序号；仅放款/举证事件有值 / set only for milestone-scoped events',
+  block_number   BIGINT UNSIGNED NOT NULL COMMENT '事件所在区块 / event block',
+  tx_hash        CHAR(66)        NOT NULL COMMENT '交易哈希 / tx hash',
+  log_index      INT UNSIGNED    NOT NULL COMMENT '日志在交易中的序号 / log index',
+  created_at     TIMESTAMP       NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '入库时间 / indexed at',
+  PRIMARY KEY (id),
+  UNIQUE KEY uniq_log (tx_hash, log_index),
+  KEY idx_campaign (campaign_id),
+  KEY idx_block (block_number)
+) ENGINE=InnoDB COMMENT='全局链上活动流水(幂等唯一键) / global on-chain activity feed';

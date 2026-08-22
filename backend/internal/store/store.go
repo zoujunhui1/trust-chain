@@ -49,6 +49,18 @@ type Donation struct {
 	LogIndex    uint32
 }
 
+// ActivityEvent is one row of the global activity feed (see activity_events).
+// Amount / MilestoneIdx are nil for event types that don't carry them.
+type ActivityEvent struct {
+	CampaignID   uint64
+	EventType    string
+	Amount       *big.Int
+	MilestoneIdx *uint32
+	BlockNumber  uint64
+	TxHash       string
+	LogIndex     uint32
+}
+
 // Open 建立连接池并 Ping 校验（fail fast）。/ Open dials the pool and pings (fail fast).
 func Open(dsn string) (*Store, error) {
 	db, err := sql.Open("mysql", dsn)
@@ -218,6 +230,31 @@ func (s *Store) MarkCampaignCompleted(ctx context.Context, campaignID uint64) er
 	_, err := s.db.ExecContext(ctx, `UPDATE campaigns SET completed = TRUE WHERE id = ?`, campaignID)
 	if err != nil {
 		return fmt.Errorf("store: 标记完成失败 / mark completed: %w", err)
+	}
+	return nil
+}
+
+// --- 活动流水 / activity feed ---
+
+// InsertActivity 幂等追加一行全局活动流水（INSERT IGNORE，唯一键同 donations）。
+// InsertActivity idempotently appends one activity-feed row (INSERT IGNORE, same unique key pattern as donations).
+func (s *Store) InsertActivity(ctx context.Context, e ActivityEvent) error {
+	var amount sql.NullString
+	if e.Amount != nil {
+		amount = sql.NullString{String: e.Amount.String(), Valid: true}
+	}
+	var idx sql.NullInt64
+	if e.MilestoneIdx != nil {
+		idx = sql.NullInt64{Int64: int64(*e.MilestoneIdx), Valid: true}
+	}
+	_, err := s.db.ExecContext(ctx, `
+		INSERT IGNORE INTO activity_events
+			(campaign_id, event_type, amount, milestone_idx, block_number, tx_hash, log_index)
+		VALUES (?, ?, ?, ?, ?, ?, ?)`,
+		e.CampaignID, e.EventType, amount, idx, e.BlockNumber, e.TxHash, e.LogIndex,
+	)
+	if err != nil {
+		return fmt.Errorf("store: 写活动流水失败 / insert activity: %w", err)
 	}
 	return nil
 }

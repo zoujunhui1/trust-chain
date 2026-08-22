@@ -39,7 +39,9 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/campaigns", s.handleListCampaigns)
 	mux.HandleFunc("GET /api/campaigns/{id}", s.handleGetCampaign)
 	mux.HandleFunc("GET /api/campaigns/{id}/donations", s.handleListDonations)
+	mux.HandleFunc("GET /api/charities", s.handleListCharities)
 	mux.HandleFunc("GET /api/charities/{address}", s.handleGetCharity)
+	mux.HandleFunc("GET /api/activity", s.handleListActivity)
 
 	// 用 CORS 中间件包一层，允许浏览器前端跨域访问。
 	// Wrap with CORS so the browser frontend can call across origins.
@@ -130,6 +132,30 @@ func (s *Server) handleGetCharity(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, c)
+}
+
+// handleListCharities: GET /api/charities?limit=&offset= —— 所有见过的机构（含已撤销）。
+// Lists every charity ever seen (including revoked ones).
+func (s *Server) handleListCharities(w http.ResponseWriter, r *http.Request) {
+	limit, offset := parsePaging(r)
+	list, err := s.store.ListCharities(r.Context(), limit, offset)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "查询失败 / query failed")
+		return
+	}
+	writeJSON(w, http.StatusOK, list)
+}
+
+// handleListActivity: GET /api/activity?limit=&offset= —— 全局链上活动流水，最新在前。
+// Global on-chain activity feed, newest first.
+func (s *Server) handleListActivity(w http.ResponseWriter, r *http.Request) {
+	limit, offset := parsePaging(r)
+	list, err := s.store.ListActivity(r.Context(), limit, offset)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "查询失败 / query failed")
+		return
+	}
+	writeJSON(w, http.StatusOK, list)
 }
 
 // ============================ 小工具 / helpers ============================
