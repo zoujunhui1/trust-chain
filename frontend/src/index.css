@@ -1,0 +1,26 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+@import 'tailwindcss';
+
+/* Design tokens lifted from the Figma mockup (TrustChain UI). */
+@theme {
+  --font-sans: 'Inter', system-ui, sans-serif;
+
+  --color-ink: #14243b; /* primary text */
+  --color-muted: #5a6b82; /* secondary text */
+  --color-accent: #1e3a5f; /* brand / buttons */
+  --color-page: #f7f8fa; /* page background */
+  --color-border: #e2e5ea;
+
+  --color-proven: #15803d;
+  --color-proven-tint: #dcfce7;
+  --color-released: #b45309;
+  --color-released-tint: #fef3c7;
+  --color-locked: #64748b;
+  --color-locked-tint: #f1f5f9;
+}
+
+body {
+  font-family: var(--font-sans);
+  background: var(--color-page);
+  color: var(--color-ink);
+}
