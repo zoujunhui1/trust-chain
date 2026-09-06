@@ -3,6 +3,7 @@ import CampaignList from './pages/CampaignList'
 import CampaignDetail from './pages/CampaignDetail'
 import TransparencyDashboard from './pages/TransparencyDashboard'
 import CreateCampaign from './pages/CreateCampaign'
+import AdminCharities from './pages/AdminCharities'
 import WalletButton from './components/WalletButton'
 import { WalletProvider } from './lib/wallet'
 
@@ -16,6 +17,7 @@ function App() {
             <Link to="/">Campaigns</Link>
             <Link to="/transparency">Transparency</Link>
             <Link to="/create">Create Campaign</Link>
+            <Link to="/admin/charities">Admin</Link>
             <WalletButton />
           </div>
         </nav>
@@ -25,6 +27,7 @@ function App() {
           <Route path="/campaigns/:id" element={<CampaignDetail />} />
           <Route path="/transparency" element={<TransparencyDashboard />} />
           <Route path="/create" element={<CreateCampaign />} />
+          <Route path="/admin/charities" element={<AdminCharities />} />
         </Routes>
       </div>
     </WalletProvider>
