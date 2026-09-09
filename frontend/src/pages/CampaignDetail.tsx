@@ -3,6 +3,7 @@ import { Link, useParams } from 'react-router-dom'
 import { ApiError, getCampaign, getCharity, listDonations } from '../lib/api'
 import type { Campaign, Donation, Milestone } from '../lib/api'
 import { milestoneStatusText, progressPercent, shortAddress, weiToEth } from '../lib/format'
+import { campaignTheme } from '../lib/theme'
 import MilestoneChip from '../components/MilestoneChip'
 import DonationPanel from '../components/DonationPanel'
 
@@ -15,6 +16,7 @@ export default function CampaignDetail() {
   const [verified, setVerified] = useState(false)
   const [notFound, setNotFound] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const theme = campaign ? campaignTheme(campaign.id) : null
 
   useEffect(() => {
     if (!id) return
@@ -63,8 +65,22 @@ export default function CampaignDetail() {
       {notFound && <p className="px-16 py-12 text-muted">Campaign not found.</p>}
       {!error && !notFound && !campaign && <p className="px-16 py-12 text-muted">Loading campaign…</p>}
 
-      {campaign && (
+      {campaign && theme && (
         <>
+          <div className="px-16 pt-6">
+            <div
+              className="flex h-36 items-center justify-between rounded-xl px-8"
+              style={{ background: theme.gradient }}
+            >
+              <span className="text-5xl" aria-hidden="true">
+                {theme.emoji}
+              </span>
+              <span className="rounded-full bg-white/80 px-3 py-1.5 text-sm font-medium" style={{ color: theme.accent }}>
+                {theme.label}
+              </span>
+            </div>
+          </div>
+
           <div className="px-16 pb-10 pt-6">
             <div className="flex items-center gap-1.5 text-sm text-muted">
               {verified && (
@@ -90,8 +106,8 @@ export default function CampaignDetail() {
 
             <div className="mt-6 h-2.5 w-full max-w-[700px] overflow-hidden rounded-full bg-border">
               <div
-                className="h-full rounded-full bg-accent"
-                style={{ width: `${progressPercent(campaign.raised, campaign.goal)}%` }}
+                className="h-full rounded-full"
+                style={{ width: `${progressPercent(campaign.raised, campaign.goal)}%`, backgroundColor: theme.accent }}
               />
             </div>
             <p className="mt-3 text-sm text-muted">
