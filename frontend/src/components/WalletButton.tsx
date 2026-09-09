@@ -1,8 +1,16 @@
 import { useWallet } from '../lib/wallet'
+import { useRole, ROLE_LABEL } from '../lib/role'
 import { shortAddress } from '../lib/format'
+
+const ROLE_BADGE_CLASS: Record<string, string> = {
+  admin: 'bg-accent-tint text-accent',
+  charity: 'bg-proven-tint text-proven',
+  donor: 'bg-locked-tint text-locked',
+}
 
 export default function WalletButton() {
   const { hasWallet, address, connecting, isWrongNetwork, connect, switchNetwork } = useWallet()
+  const { role } = useRole()
 
   if (!hasWallet) {
     return (
@@ -31,7 +39,12 @@ export default function WalletButton() {
 
   if (address) {
     return (
-      <span className="rounded-lg border border-border px-4 py-2 text-sm font-medium text-ink">
+      <span className="flex items-center gap-2 rounded-lg border border-border px-4 py-2 text-sm font-medium text-ink">
+        {role && (
+          <span className={`rounded-full px-2.5 py-1 text-xs font-medium ${ROLE_BADGE_CLASS[role]}`}>
+            {ROLE_LABEL[role]}
+          </span>
+        )}
         {shortAddress(address)}
       </span>
     )
