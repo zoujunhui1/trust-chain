@@ -71,15 +71,15 @@ export default function CreateCampaign() {
   }
 
   return (
-    <div className="px-16 py-12">
-      <h1 className="text-3xl font-bold text-ink">Create a Campaign</h1>
+    <div className="mx-auto max-w-7xl px-6 py-12 sm:px-10 lg:px-16">
+      <h1 className="text-3xl font-bold tracking-tight text-ink">Create a Campaign</h1>
       <p className="mt-2 max-w-2xl text-muted">
         Only registry-verified charities can create campaigns. Set the payout amount for each
         milestone — the goal is their sum, and funds release one milestone at a time as you submit
         proof.
       </p>
 
-      <div className="mt-8 max-w-xl rounded-xl border border-border bg-white p-6">
+      <div className="mt-8 max-w-xl rounded-xl border border-border bg-white p-6 shadow-sm">
         {!wallet.address && (
           <>
             <p className="text-sm text-muted">Connect your charity's wallet to get started.</p>
@@ -87,7 +87,7 @@ export default function CreateCampaign() {
               type="button"
               onClick={wallet.connect}
               disabled={wallet.connecting}
-              className="mt-4 rounded-lg bg-accent px-4 py-2.5 text-sm font-medium text-white hover:opacity-90 disabled:opacity-50"
+              className="mt-4 rounded-lg bg-accent px-4 py-2.5 text-sm font-medium text-white shadow-sm transition-all hover:opacity-90 hover:shadow-md active:scale-[0.98] disabled:opacity-50"
             >
               {wallet.connecting ? 'Connecting…' : 'Connect Wallet'}
             </button>
@@ -101,7 +101,7 @@ export default function CreateCampaign() {
             <button
               type="button"
               onClick={wallet.switchNetwork}
-              className="mt-4 rounded-lg bg-released px-4 py-2.5 text-sm font-medium text-white hover:opacity-90"
+              className="mt-4 rounded-lg bg-released px-4 py-2.5 text-sm font-medium text-white shadow-sm transition-all hover:opacity-90 hover:shadow-md active:scale-[0.98]"
             >
               Switch to Sepolia
             </button>
@@ -133,7 +133,7 @@ export default function CreateCampaign() {
               {milestones.map((m, i) => (
                 <div key={i} className="flex items-center gap-2">
                   <span className="w-6 text-sm text-muted">{i + 1}.</span>
-                  <div className="flex flex-1 items-center rounded-lg border border-border px-3 py-2">
+                  <div className="flex flex-1 items-center rounded-lg border border-border px-3 py-2 transition-colors focus-within:border-accent">
                     <input
                       type="number"
                       min="0"
@@ -172,7 +172,7 @@ export default function CreateCampaign() {
               type="button"
               onClick={handleSubmit}
               disabled={!canSubmit}
-              className="mt-6 w-full rounded-lg bg-accent px-4 py-2.5 text-sm font-medium text-white hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
+              className="mt-6 w-full rounded-lg bg-accent px-4 py-2.5 text-sm font-medium text-white shadow-sm transition-all hover:opacity-90 hover:shadow-md active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50 disabled:shadow-none disabled:active:scale-100"
             >
               {status === 'pending' ? 'Confirming…' : 'Create Campaign'}
             </button>

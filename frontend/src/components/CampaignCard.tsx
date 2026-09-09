@@ -15,7 +15,7 @@ export default function CampaignCard({ campaign, verified, milestones }: Campaig
   const theme = campaignTheme(campaign.id)
 
   return (
-    <div className="flex flex-col overflow-hidden rounded-xl border border-border bg-white">
+    <div className="flex flex-col overflow-hidden rounded-xl border border-border bg-white shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-lg">
       <div className="flex items-center justify-between px-6 py-8" style={{ background: theme.gradient }}>
         <span className="text-4xl" aria-hidden="true">
           {theme.emoji}
@@ -58,7 +58,7 @@ export default function CampaignCard({ campaign, verified, milestones }: Campaig
 
         <Link
           to={`/campaigns/${campaign.id}`}
-          className="mt-6 rounded-lg px-4 py-2.5 text-center text-sm font-medium text-white hover:opacity-90"
+          className="mt-6 rounded-lg px-4 py-2.5 text-center text-sm font-medium text-white shadow-sm transition-all hover:opacity-90 hover:shadow-md active:scale-[0.98]"
           style={{ backgroundColor: theme.accent }}
         >
           View Campaign

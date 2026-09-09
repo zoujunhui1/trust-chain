@@ -54,22 +54,22 @@ export default function CampaignDetail() {
   }, [id])
 
   return (
-    <div>
-      <div className="px-16 pt-10">
-        <Link to="/" className="text-sm text-muted hover:text-ink">
+    <div className="mx-auto max-w-7xl px-6 sm:px-10 lg:px-16">
+      <div className="pt-10">
+        <Link to="/" className="text-sm text-muted transition-colors hover:text-ink">
           ← Back to Campaigns
         </Link>
       </div>
 
-      {error && <p className="px-16 py-12 text-sm text-red-600">Couldn't load campaign: {error}</p>}
-      {notFound && <p className="px-16 py-12 text-muted">Campaign not found.</p>}
-      {!error && !notFound && !campaign && <p className="px-16 py-12 text-muted">Loading campaign…</p>}
+      {error && <p className="py-12 text-sm text-red-600">Couldn't load campaign: {error}</p>}
+      {notFound && <p className="py-12 text-muted">Campaign not found.</p>}
+      {!error && !notFound && !campaign && <p className="py-12 text-muted">Loading campaign…</p>}
 
       {campaign && theme && (
         <>
-          <div className="px-16 pt-6">
+          <div className="pt-6">
             <div
-              className="flex h-36 items-center justify-between rounded-xl px-8"
+              className="flex h-36 items-center justify-between rounded-xl px-8 shadow-sm"
               style={{ background: theme.gradient }}
             >
               <span className="text-5xl" aria-hidden="true">
@@ -81,7 +81,7 @@ export default function CampaignDetail() {
             </div>
           </div>
 
-          <div className="px-16 pb-10 pt-6">
+          <div className="pb-10 pt-6">
             <div className="flex items-center gap-1.5 text-sm text-muted">
               {verified && (
                 <svg viewBox="0 0 14 14" fill="none" className="h-3.5 w-3.5 shrink-0 text-accent">
@@ -96,7 +96,7 @@ export default function CampaignDetail() {
             </div>
 
             <div className="mt-3 flex items-center gap-3">
-              <h1 className="text-3xl font-bold text-ink">Campaign #{campaign.id}</h1>
+              <h1 className="text-3xl font-bold tracking-tight text-ink">Campaign #{campaign.id}</h1>
               {campaign.completed && (
                 <span className="rounded-full bg-proven-tint px-2.5 py-1 text-xs font-medium text-proven">
                   Completed
@@ -116,7 +116,7 @@ export default function CampaignDetail() {
             </p>
           </div>
 
-          <div className="flex flex-col gap-10 px-16 pb-16 lg:flex-row">
+          <div className="flex flex-col gap-10 pb-16 lg:flex-row">
             <div className="flex-1">
               <h2 className="text-lg font-semibold text-ink">About this campaign</h2>
               <p className="mt-2 max-w-[760px] text-sm text-muted">
@@ -124,7 +124,7 @@ export default function CampaignDetail() {
                 on-chain fields below are currently tracked.
               </p>
 
-              <div className="mt-6 divide-y divide-border rounded-xl border border-border bg-white">
+              <div className="mt-6 divide-y divide-border rounded-xl border border-border bg-white shadow-sm">
                 {milestones.map((m) => (
                   <div key={m.idx} className="flex items-center justify-between gap-4 px-5 py-4">
                     <div>

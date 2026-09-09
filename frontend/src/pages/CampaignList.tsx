@@ -48,8 +48,8 @@ export default function CampaignList() {
   }, [])
 
   return (
-    <div className="px-16 py-12">
-      <h1 className="text-3xl font-bold text-ink">Campaigns</h1>
+    <div className="mx-auto max-w-7xl px-6 py-12 sm:px-10 lg:px-16">
+      <h1 className="text-3xl font-bold tracking-tight text-ink">Campaigns</h1>
       <p className="mt-2 max-w-2xl text-muted">
         Support verified charities — funds are only released once each milestone is proven on-chain.
       </p>

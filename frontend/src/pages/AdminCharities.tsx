@@ -86,14 +86,14 @@ export default function AdminCharities() {
   const pendingFor = (address: string) => tx?.address.toLowerCase() === address.toLowerCase() && tx.status === 'pending'
 
   return (
-    <div className="px-16 py-12">
-      <h1 className="text-3xl font-bold text-ink">Charity Registry Admin</h1>
+    <div className="mx-auto max-w-7xl px-6 py-12 sm:px-10 lg:px-16">
+      <h1 className="text-3xl font-bold tracking-tight text-ink">Charity Registry Admin</h1>
       <p className="mt-2 max-w-2xl text-muted">
         Verify or revoke charity addresses on <code className="text-xs">CharityRegistry</code>. Only the
         contract owner can call these — everyone else can view this page but every action will fail on-chain.
       </p>
 
-      <div className="mt-8 max-w-2xl rounded-xl border border-border bg-white p-6">
+      <div className="mt-8 max-w-2xl rounded-xl border border-border bg-white p-6 shadow-sm">
         {!wallet.address && (
           <>
             <p className="text-sm text-muted">Connect the platform admin wallet to manage charities.</p>
@@ -101,7 +101,7 @@ export default function AdminCharities() {
               type="button"
               onClick={wallet.connect}
               disabled={wallet.connecting}
-              className="mt-4 rounded-lg bg-accent px-4 py-2.5 text-sm font-medium text-white hover:opacity-90 disabled:opacity-50"
+              className="mt-4 rounded-lg bg-accent px-4 py-2.5 text-sm font-medium text-white shadow-sm transition-all hover:opacity-90 hover:shadow-md active:scale-[0.98] disabled:opacity-50"
             >
               {wallet.connecting ? 'Connecting…' : 'Connect Wallet'}
             </button>
@@ -115,7 +115,7 @@ export default function AdminCharities() {
             <button
               type="button"
               onClick={wallet.switchNetwork}
-              className="mt-4 rounded-lg bg-released px-4 py-2.5 text-sm font-medium text-white hover:opacity-90"
+              className="mt-4 rounded-lg bg-released px-4 py-2.5 text-sm font-medium text-white shadow-sm transition-all hover:opacity-90 hover:shadow-md active:scale-[0.98]"
             >
               Switch to Sepolia
             </button>
@@ -144,13 +144,13 @@ export default function AdminCharities() {
                 value={newAddress}
                 onChange={(e) => setNewAddress(e.target.value)}
                 disabled={pendingFor(newAddress)}
-                className="flex-1 rounded-lg border border-border px-3 py-2 text-sm text-ink outline-none"
+                className="flex-1 rounded-lg border border-border px-3 py-2 text-sm text-ink outline-none transition-colors focus:border-accent"
               />
               <button
                 type="button"
                 onClick={() => runAction('verify', newAddress.trim())}
                 disabled={!isValidAddress || pendingFor(newAddress)}
-                className="rounded-lg bg-accent px-4 py-2.5 text-sm font-medium text-white hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
+                className="rounded-lg bg-accent px-4 py-2.5 text-sm font-medium text-white shadow-sm transition-all hover:opacity-90 hover:shadow-md active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50 disabled:shadow-none disabled:active:scale-100"
               >
                 {pendingFor(newAddress) ? 'Confirming…' : 'Verify'}
               </button>
@@ -169,7 +169,7 @@ export default function AdminCharities() {
             {!charitiesError && charities !== null && charities.length > 0 && (
               <div className="mt-3 divide-y divide-border rounded-lg border border-border">
                 {charities.map((c) => (
-                  <div key={c.address} className="flex items-center justify-between px-4 py-3">
+                  <div key={c.address} className="flex items-center justify-between px-4 py-3 transition-colors hover:bg-page/60">
                     <div>
                       <p className="text-sm font-medium text-ink">{shortAddress(c.address)}</p>
                       <p className="text-xs text-muted">{c.verified ? 'Verified' : 'Not verified'}</p>
@@ -181,8 +181,8 @@ export default function AdminCharities() {
                         disabled={pendingFor(c.address)}
                         className={
                           c.verified
-                            ? 'rounded-lg border border-red-200 px-3 py-1.5 text-xs font-medium text-red-600 hover:bg-red-50 disabled:opacity-50'
-                            : 'rounded-lg bg-accent px-3 py-1.5 text-xs font-medium text-white hover:opacity-90 disabled:opacity-50'
+                            ? 'rounded-lg border border-red-200 px-3 py-1.5 text-xs font-medium text-red-600 transition-colors hover:bg-red-50 disabled:opacity-50'
+                            : 'rounded-lg bg-accent px-3 py-1.5 text-xs font-medium text-white shadow-sm transition-all hover:opacity-90 hover:shadow-md active:scale-[0.98] disabled:opacity-50 disabled:shadow-none'
                         }
                       >
                         {pendingFor(c.address) ? 'Confirming…' : c.verified ? 'Revoke' : 'Verify'}

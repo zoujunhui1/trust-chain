@@ -41,8 +41,8 @@ export default function TransparencyDashboard() {
   const verifiedCount = charities?.filter((c) => c.verified).length ?? 0
 
   return (
-    <div className="px-16 py-12">
-      <h1 className="text-3xl font-bold text-ink">Transparency Dashboard</h1>
+    <div className="mx-auto max-w-7xl px-6 py-12 sm:px-10 lg:px-16">
+      <h1 className="text-3xl font-bold tracking-tight text-ink">Transparency Dashboard</h1>
       <p className="mt-2 max-w-2xl text-muted">
         Every donation, milestone release and receipt is recorded on-chain and verifiable by anyone.
       </p>
@@ -73,7 +73,7 @@ export default function TransparencyDashboard() {
             />
           </div>
 
-          <div className="mt-10 overflow-x-auto rounded-xl border border-border bg-white">
+          <div className="mt-10 overflow-x-auto rounded-xl border border-border bg-white shadow-sm">
             <table className="w-full min-w-[800px] text-left text-sm">
               <thead>
                 <tr className="border-b border-border text-xs font-medium text-muted">
@@ -93,7 +93,7 @@ export default function TransparencyDashboard() {
                   </tr>
                 )}
                 {activity.map((a) => (
-                  <tr key={a.id}>
+                  <tr key={a.id} className="transition-colors hover:bg-page/60">
                     <td className="px-5 py-3.5">
                       <Link to={`/campaigns/${a.campaignId}`} className="text-ink hover:text-accent">
                         Campaign #{a.campaignId}
@@ -126,7 +126,7 @@ export default function TransparencyDashboard() {
 
 function StatCard({ label, value, detail }: { label: string; value: string; detail: string }) {
   return (
-    <div className="rounded-xl border border-border bg-white p-6">
+    <div className="rounded-xl border border-border bg-white p-6 shadow-sm transition-shadow hover:shadow-md">
       <p className="text-xs font-medium tracking-wide text-muted">{label}</p>
       <p className="mt-2 text-3xl font-bold text-ink">{value}</p>
       <p className="mt-2 text-sm text-muted">{detail}</p>

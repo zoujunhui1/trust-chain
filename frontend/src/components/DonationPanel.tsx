@@ -38,10 +38,10 @@ export default function DonationPanel({ campaignId, donations }: DonationPanelPr
   }
 
   return (
-    <div className="w-full shrink-0 rounded-xl border border-border bg-white p-6 lg:w-[380px]">
+    <div className="w-full shrink-0 rounded-xl border border-border bg-white p-6 shadow-sm lg:w-[380px]">
       <h2 className="text-lg font-semibold text-ink">Make a Donation</h2>
 
-      <div className="mt-5 flex items-center rounded-lg border border-border px-4 py-3">
+      <div className="mt-5 flex items-center rounded-lg border border-border px-4 py-3 transition-colors focus-within:border-accent">
         <input
           type="number"
           min="0"
@@ -60,7 +60,7 @@ export default function DonationPanel({ campaignId, donations }: DonationPanelPr
           type="button"
           onClick={wallet.connect}
           disabled={wallet.connecting}
-          className="mt-4 w-full rounded-lg bg-accent px-4 py-2.5 text-sm font-medium text-white hover:opacity-90 disabled:opacity-50"
+          className="mt-4 w-full rounded-lg bg-accent px-4 py-2.5 text-sm font-medium text-white shadow-sm transition-all hover:opacity-90 hover:shadow-md active:scale-[0.98] disabled:opacity-50"
         >
           {wallet.connecting ? 'Connecting…' : 'Connect Wallet to Donate'}
         </button>
@@ -68,7 +68,7 @@ export default function DonationPanel({ campaignId, donations }: DonationPanelPr
         <button
           type="button"
           onClick={wallet.switchNetwork}
-          className="mt-4 w-full rounded-lg bg-released px-4 py-2.5 text-sm font-medium text-white hover:opacity-90"
+          className="mt-4 w-full rounded-lg bg-released px-4 py-2.5 text-sm font-medium text-white shadow-sm transition-all hover:opacity-90 hover:shadow-md active:scale-[0.98]"
         >
           Switch to Sepolia
         </button>
@@ -77,7 +77,7 @@ export default function DonationPanel({ campaignId, donations }: DonationPanelPr
           type="button"
           onClick={handleSubmit}
           disabled={!canSubmit}
-          className="mt-4 w-full rounded-lg bg-accent px-4 py-2.5 text-sm font-medium text-white hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
+          className="mt-4 w-full rounded-lg bg-accent px-4 py-2.5 text-sm font-medium text-white shadow-sm transition-all hover:opacity-90 hover:shadow-md active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50 disabled:shadow-none disabled:active:scale-100"
         >
           {status === 'pending' ? 'Confirming…' : 'Donate Now'}
         </button>

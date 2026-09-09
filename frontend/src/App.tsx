@@ -22,17 +22,33 @@ function AppShell() {
 
   return (
     <div className="min-h-svh">
-      <nav className="flex items-center justify-between border-b border-border bg-white px-16 py-5">
-        <span className="text-xl font-bold text-accent">TrustChain</span>
-        <div className="flex items-center gap-8 text-sm font-medium text-muted">
-          <Link to="/">Campaigns</Link>
-          <Link to="/transparency">Transparency</Link>
-          {/* Nav is role-gated: only a verified charity can create campaigns,
-              only the registry owner can admin charities. Everyone else never
-              sees these links (they'd fail on-chain anyway). */}
-          {role === 'charity' && <Link to="/create">Create Campaign</Link>}
-          {role === 'admin' && <Link to="/admin/charities">Admin</Link>}
-          <WalletButton />
+      <div className="hero-glow" aria-hidden="true" />
+
+      <nav className="sticky top-0 z-10 border-b border-border bg-white/85 backdrop-blur-sm">
+        <div className="mx-auto flex max-w-7xl items-center justify-between px-6 py-5 sm:px-10 lg:px-16">
+          <span className="text-xl font-bold tracking-tight text-accent">TrustChain</span>
+          <div className="flex items-center gap-8 text-sm font-medium text-muted">
+            <Link to="/" className="transition-colors hover:text-ink">
+              Campaigns
+            </Link>
+            <Link to="/transparency" className="transition-colors hover:text-ink">
+              Transparency
+            </Link>
+            {/* Nav is role-gated: only a verified charity can create campaigns,
+                only the registry owner can admin charities. Everyone else never
+                sees these links (they'd fail on-chain anyway). */}
+            {role === 'charity' && (
+              <Link to="/create" className="transition-colors hover:text-ink">
+                Create Campaign
+              </Link>
+            )}
+            {role === 'admin' && (
+              <Link to="/admin/charities" className="transition-colors hover:text-ink">
+                Admin
+              </Link>
+            )}
+            <WalletButton />
+          </div>
         </div>
       </nav>
 
