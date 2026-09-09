@@ -2,10 +2,16 @@
 // Package api is the read-side HTTP layer: it exposes store queries as REST
 // endpoints for the frontend.
 //
-// 只读 / read-only:
-//   本服务不接受任何写操作——所有写（认证机构、建活动、捐款、放款）都由
-//   前端通过 MetaMask 直接发交易上链，再由索引器同步回库。API 只负责「读」。
-//   No writes here — the frontend writes on-chain via MetaMask; this API only reads.
+// 基本只读，一个例外 / mostly read-only, one exception:
+//   所有链上状态的写（认证机构、建活动、捐款、放款）都由前端通过 MetaMask
+//   直接发交易上链，再由索引器同步回库，这条边界没变。唯一的例外是
+//   POST /api/users/connect：钱包连接时前端调它，记录"谁连过/什么角色/何时"，
+//   这不是链上状态，索引器管不到，所以由 API 直写。见 store/users.go。
+//   All on-chain-state writes still happen on-chain via MetaMask, synced back
+//   by the indexer — that boundary is unchanged. The one exception is
+//   POST /api/users/connect: the frontend calls it on wallet connect to
+//   record who connected, as what role, and when — that's not on-chain state
+//   the indexer could pick up, so the API writes it directly. See store/users.go.
 package api
 
 import (
@@ -42,6 +48,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/charities", s.handleListCharities)
 	mux.HandleFunc("GET /api/charities/{address}", s.handleGetCharity)
 	mux.HandleFunc("GET /api/activity", s.handleListActivity)
+	mux.HandleFunc("POST /api/users/connect", s.handleConnectUser)
 
 	// 用 CORS 中间件包一层，允许浏览器前端跨域访问。
 	// Wrap with CORS so the browser frontend can call across origins.
@@ -158,6 +165,40 @@ func (s *Server) handleListActivity(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, list)
 }
 
+// connectUserRequest is the body of POST /api/users/connect.
+type connectUserRequest struct {
+	Address string `json:"address"`
+	Role    string `json:"role"` // admin / charity / donor — see store/users.go
+}
+
+var validUserRoles = map[string]bool{"admin": true, "charity": true, "donor": true}
+
+// handleConnectUser: POST /api/users/connect — records that a wallet
+// connected, with the role the frontend computed for it (lib/role.ts). See
+// the package doc comment above for why this is the one write on this API.
+func (s *Server) handleConnectUser(w http.ResponseWriter, r *http.Request) {
+	var req connectUserRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "请求体不是合法 JSON / malformed JSON body")
+		return
+	}
+	if !common.IsHexAddress(req.Address) {
+		writeError(w, http.StatusBadRequest, "地址格式错误 / invalid address")
+		return
+	}
+	if !validUserRoles[req.Role] {
+		writeError(w, http.StatusBadRequest, "role 必须是 admin/charity/donor 之一 / role must be admin, charity or donor")
+		return
+	}
+	addr := strings.ToLower(common.HexToAddress(req.Address).Hex())
+
+	if err := s.store.UpsertUser(r.Context(), addr, req.Role); err != nil {
+		writeError(w, http.StatusInternalServerError, "写入失败 / write failed")
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
 // ============================ 小工具 / helpers ============================
 
 // parseID 从路径取 {id} 并转成 uint64，非法则写 400 并返回 ok=false。
@@ -205,12 +246,15 @@ func writeError(w http.ResponseWriter, status int, msg string) {
 	writeJSON(w, status, map[string]string{"error": msg})
 }
 
-// withCORS 允许任意来源的跨域读请求（只读 API，无凭证，安全）。
-// withCORS allows cross-origin read requests from any origin (read-only, no credentials).
+// withCORS 允许任意来源的跨域请求（无凭证，安全；POST 只对应上面那一个
+// 写接口，请求体就是 address+role，没有可滥用的敏感操作）。
+// withCORS allows cross-origin requests from any origin (no credentials; POST
+// only reaches the one write endpoint above, whose body is just
+// address+role — nothing sensitive to abuse).
 func withCORS(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Access-Control-Allow-Origin", "*")
-		w.Header().Set("Access-Control-Allow-Methods", "GET, OPTIONS")
+		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
 		w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
 		// 浏览器的预检请求（OPTIONS）直接回 204。/ Answer CORS preflight with 204.
 		if r.Method == http.MethodOptions {

@@ -1,4 +1,6 @@
-// Typed client for the backend read-only REST API (backend/internal/api).
+// Typed client for the backend REST API (backend/internal/api) — mostly
+// read-only; connectUser() below is the one write (see that package's doc
+// comment for why).
 // All amounts come back as decimal-wei strings (uint256 can overflow JS numbers).
 
 const BASE_URL = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8090'
@@ -105,4 +107,20 @@ export function listCharities(): Promise<Charity[]> {
 
 export function listActivity(): Promise<ActivityEvent[]> {
   return getJSON('/api/activity')
+}
+
+// Records that a wallet connected, with the role the frontend computed for
+// it (lib/role.ts). Not a source of truth for permissions — just a "who
+// connected, as what, when" log. Callers should fire-and-forget this; a
+// failure here shouldn't block the wallet UI.
+export async function connectUser(address: string, role: 'admin' | 'charity' | 'donor'): Promise<void> {
+  const res = await fetch(`${BASE_URL}/api/users/connect`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ address, role }),
+  })
+  if (!res.ok) {
+    const body = await res.json().catch(() => null)
+    throw new ApiError(res.status, body?.error ?? `${res.status} ${res.statusText}`)
+  }
 }

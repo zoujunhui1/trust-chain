@@ -2,9 +2,10 @@
 -- 用法 / usage:  mysql -u root < backend/db/schema.sql
 --
 -- 设计要点 / design notes:
---   * 这些表由链上事件重建，是前端「读」的唯一来源（写走链上 MetaMask）。
---     These tables are rebuilt from on-chain events and are the sole read source
---     for the frontend (writes happen on-chain via MetaMask).
+--   * 这些表大多由链上事件重建，是前端「读」的唯一来源（写走链上 MetaMask）。
+--     Most of these tables are rebuilt from on-chain events and are the sole
+--     read source for the frontend (writes happen on-chain via MetaMask).
+--     唯一例外是 users 表，见下方说明。/ The one exception is `users`, see below.
 --   * 金额用 DECIMAL(65,0) 存 wei（uint256）。MySQL DECIMAL 最大 65 位，
 --     足够真实 ETH 金额（全网供应量约 27 位），不覆盖理论最大 uint256（78 位）。
 --   * 地址统一小写存成 CHAR(42)，bytes32 存成 CHAR(66) 十六进制。
@@ -99,3 +100,24 @@ CREATE TABLE IF NOT EXISTS activity_events (
   KEY idx_campaign (campaign_id),
   KEY idx_block (block_number)
 ) ENGINE=InnoDB COMMENT='全局链上活动流水(幂等唯一键) / global on-chain activity feed';
+
+-- 连接过钱包的用户：这是本 schema 里唯一不是由链上事件重建的表——由 API 在
+-- 前端钱包连接成功时直接写入（POST /api/users/connect），而不是索引器。
+-- role 是前端当时算出的角色快照（admin/charity/donor，见 frontend/src/lib/role.ts），
+-- 不是权限来源——真正的权限判定始终是链上 owner()/isVerified()，这张表只是
+-- "谁连过、上次是什么角色、什么时候" 的记录。
+-- Wallet-connected users: the one table in this schema NOT rebuilt from
+-- on-chain events — the API writes it directly when a wallet connects
+-- (POST /api/users/connect), not the indexer. `role` is a snapshot of what
+-- the frontend computed at connect time (admin/charity/donor); it is never
+-- the source of truth for permissions — that's always the on-chain
+-- owner()/isVerified() checks — this table just records who connected, as
+-- what role, and when.
+CREATE TABLE IF NOT EXISTS users (
+  address              CHAR(42)    NOT NULL COMMENT '小写 0x 地址 / lowercase 0x address',
+  role                 VARCHAR(16) NOT NULL COMMENT '连接时的角色快照 admin/charity/donor / role snapshot at connect time',
+  first_connected_at   TIMESTAMP   NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '首次连接时间 / first-seen time',
+  last_connected_at    TIMESTAMP   NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+                                             COMMENT '最近一次连接时间 / most recent connect time',
+  PRIMARY KEY (address)
+) ENGINE=InnoDB COMMENT='连接过钱包的用户(API 直写，非索引器) / wallet-connected users (API-written, not indexer)';

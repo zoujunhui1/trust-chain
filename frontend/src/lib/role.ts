@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { getCharity } from './api'
+import { connectUser, getCharity } from './api'
 import { getOwner } from './registry'
 import { useWallet } from './wallet'
 
@@ -11,10 +11,29 @@ interface RoleState {
   loading: boolean
 }
 
-// There's no off-chain "users" table — role is derived from the same
-// on-chain/indexed signals the Admin and Create Campaign pages already read:
-// the registry owner is the admin, a verified charity address is a charity,
-// everyone else with a connected wallet is a donor.
+// useRole() is called from more than one component (WalletButton, App's nav),
+// each running its own effect. Report a given address+role to the backend at
+// most once regardless of how many callers computed it, instead of posting
+// once per caller on every connect.
+let lastReported: string | null = null
+function reportConnectOnce(address: string, role: Role) {
+  const key = `${address.toLowerCase()}:${role}`
+  if (key === lastReported) return
+  lastReported = key
+  // Fire-and-forget: this is a "who connected" log, not something that
+  // should ever block or break the wallet UI if the API is unreachable.
+  connectUser(address, role).catch(() => {
+    lastReported = null // let a later render retry
+  })
+}
+
+// There's no off-chain "users" table backing permissions — role for gating
+// the UI is derived from the same on-chain/indexed signals the Admin and
+// Create Campaign pages already read: the registry owner is the admin, a
+// verified charity address is a charity, everyone else with a connected
+// wallet is a donor. Once computed, it's also reported to POST
+// /api/users/connect purely as a connect-time record (see backend/internal
+// /store/users.go) — that table is never consulted for the check above.
 export function useRole(): RoleState {
   const wallet = useWallet()
   const [role, setRole] = useState<Role | null>(null)
@@ -35,11 +54,14 @@ export function useRole(): RoleState {
         if (cancelled) return
         if (owner.toLowerCase() === address.toLowerCase()) {
           setRole('admin')
+          reportConnectOnce(address, 'admin')
           return
         }
         const charity = await getCharity(address)
         if (cancelled) return
-        setRole(charity.verified ? 'charity' : 'donor')
+        const resolved: Role = charity.verified ? 'charity' : 'donor'
+        setRole(resolved)
+        reportConnectOnce(address, resolved)
       } catch {
         // Registry/API read failed (e.g. address never indexed as a charity)
         // — fall back to the least-privileged role rather than block the UI.
