@@ -1,11 +1,18 @@
 import { useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { ApiError, getCampaign, getCharity, listDonations } from '../lib/api'
-import type { Campaign, Donation, Milestone } from '../lib/api'
+import type { Campaign, Donation, Milestone, MilestoneState } from '../lib/api'
 import { milestoneStatusText, progressPercent, shortAddress, weiToEth } from '../lib/format'
 import { campaignTheme } from '../lib/theme'
 import MilestoneChip from '../components/MilestoneChip'
 import DonationPanel from '../components/DonationPanel'
+
+// Same palette as MilestoneChip, just as a filled dot for the timeline below.
+const MILESTONE_DOT_CLASSES: Record<MilestoneState, string> = {
+  0: 'bg-locked-tint text-locked',
+  1: 'bg-released-tint text-released',
+  2: 'bg-proven-tint text-proven',
+}
 
 export default function CampaignDetail() {
   const { id } = useParams()
@@ -124,22 +131,32 @@ export default function CampaignDetail() {
                 on-chain fields below are currently tracked.
               </p>
 
-              <div className="mt-6 divide-y divide-border rounded-xl border border-border bg-white shadow-sm">
-                {milestones.map((m) => (
-                  <div key={m.idx} className="flex items-center justify-between gap-4 px-5 py-4">
-                    <div>
-                      <p className="font-medium text-ink">Milestone {m.idx + 1}</p>
-                      <p className="mt-1 text-sm text-muted">
-                        {weiToEth(m.amount)} ETH · {milestoneStatusText(m, m.idx, campaign)}
-                      </p>
-                    </div>
-                    <MilestoneChip state={m.state} />
-                  </div>
-                ))}
+              <div className="mt-6 rounded-xl border border-border bg-white p-5 shadow-sm">
+                <ol className="relative">
+                  <span className="absolute left-4 top-4 bottom-4 w-px bg-border" aria-hidden="true" />
+                  {milestones.map((m, i) => (
+                    <li key={m.idx} className={`relative flex gap-4 ${i > 0 ? 'mt-6' : ''}`}>
+                      <span
+                        className={`relative z-10 flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-xs font-semibold ${MILESTONE_DOT_CLASSES[m.state]}`}
+                      >
+                        {m.state === 2 ? '✓' : m.idx + 1}
+                      </span>
+                      <div className="flex-1 pt-1">
+                        <div className="flex items-center justify-between gap-4">
+                          <p className="font-medium text-ink">Milestone {m.idx + 1}</p>
+                          <MilestoneChip state={m.state} />
+                        </div>
+                        <p className="mt-1 text-sm text-muted">
+                          {weiToEth(m.amount)} ETH · {milestoneStatusText(m, m.idx, campaign)}
+                        </p>
+                      </div>
+                    </li>
+                  ))}
+                </ol>
               </div>
             </div>
 
-            <DonationPanel campaignId={campaign.id} donations={donations} />
+            <DonationPanel campaignId={campaign.id} donations={donations} accent={theme.accent} />
           </div>
         </>
       )}
