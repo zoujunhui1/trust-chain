@@ -24,9 +24,26 @@ function AppShell() {
     <div className="min-h-svh">
       <div className="hero-glow" aria-hidden="true" />
 
-      <nav className="sticky top-0 z-10 border-b border-border bg-white/85 backdrop-blur-sm">
+      <nav
+        className="sticky top-0 z-10 backdrop-blur-sm"
+        style={{
+          background:
+            'linear-gradient(rgba(255,255,255,0.88), rgba(255,255,255,0.88)), ' +
+            'linear-gradient(90deg, rgba(59,130,246,0.14), rgba(168,85,247,0.14), rgba(236,72,153,0.14))',
+        }}
+      >
         <div className="mx-auto flex max-w-7xl items-center justify-between px-6 py-5 sm:px-10 lg:px-16">
-          <span className="text-xl font-bold tracking-tight text-accent">TrustChain</span>
+          <span
+            className="text-xl font-bold tracking-tight"
+            style={{
+              backgroundImage: 'linear-gradient(90deg, #1e3a5f, #7c3aed)',
+              WebkitBackgroundClip: 'text',
+              backgroundClip: 'text',
+              color: 'transparent',
+            }}
+          >
+            TrustChain
+          </span>
           <div className="flex items-center gap-8 text-sm font-medium text-muted">
             <Link to="/" className="transition-colors hover:text-ink">
               Campaigns
@@ -50,6 +67,11 @@ function AppShell() {
             <WalletButton />
           </div>
         </div>
+        <div
+          className="h-[3px] w-full"
+          style={{ background: 'linear-gradient(90deg, #3b82f6, #a855f7, #ec4899, #22c55e)' }}
+          aria-hidden="true"
+        />
       </nav>
 
       <Routes>
