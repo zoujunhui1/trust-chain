@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { getCharity } from '../lib/api'
+import { getCharity, setCampaignTitle } from '../lib/api'
 import { createCampaign, parseCreatedCampaignId } from '../lib/escrow'
 import { shortAddress } from '../lib/format'
 import { useWallet } from '../lib/wallet'
@@ -10,11 +10,16 @@ type TxStatus = 'idle' | 'pending' | 'success' | 'error'
 export default function CreateCampaign() {
   const wallet = useWallet()
   const [verified, setVerified] = useState<boolean | null>(null)
+  const [title, setTitle] = useState('')
   const [milestones, setMilestones] = useState<string[]>([''])
   const [status, setStatus] = useState<TxStatus>('idle')
   const [txHash, setTxHash] = useState<string | null>(null)
   const [createdId, setCreatedId] = useState<number | null>(null)
   const [txError, setTxError] = useState<string | null>(null)
+  // The on-chain tx can still succeed even if this off-chain save fails —
+  // tracked separately so a title-save hiccup doesn't look like the
+  // campaign itself failed to create.
+  const [titleSaveError, setTitleSaveError] = useState<string | null>(null)
 
   useEffect(() => {
     if (!wallet.address) {
@@ -37,7 +42,8 @@ export default function CreateCampaign() {
 
   const amounts = milestones.map((m) => m.trim())
   const validAmounts = amounts.length > 0 && amounts.every((a) => Number(a) > 0)
-  const canSubmit = wallet.address && verified && !wallet.isWrongNetwork && validAmounts && status !== 'pending'
+  const canSubmit =
+    wallet.address && verified && !wallet.isWrongNetwork && title.trim() && validAmounts && status !== 'pending'
 
   function updateMilestone(i: number, value: string) {
     setMilestones((prev) => prev.map((m, idx) => (idx === i ? value : m)))
@@ -56,14 +62,25 @@ export default function CreateCampaign() {
     setTxError(null)
     setTxHash(null)
     setCreatedId(null)
+    setTitleSaveError(null)
     try {
       const signer = await wallet.getSigner()
       const tx = await createCampaign(signer, amounts)
       setTxHash(tx.hash)
       const receipt = await tx.wait()
-      setCreatedId(parseCreatedCampaignId(receipt))
+      const id = parseCreatedCampaignId(receipt)
+      setCreatedId(id)
       setStatus('success')
+      const savedTitle = title.trim()
       setMilestones([''])
+      setTitle('')
+      // Save the title off-chain — doesn't need to wait for the indexer to
+      // pick up the campaign row (see campaign_metadata's schema comment).
+      if (id !== null) {
+        setCampaignTitle(id, savedTitle).catch((err) => {
+          setTitleSaveError(err instanceof Error ? err.message : 'Failed to save the title.')
+        })
+      }
     } catch (err) {
       setStatus('error')
       setTxError(err instanceof Error ? err.message : 'Transaction failed.')
@@ -128,7 +145,18 @@ export default function CreateCampaign() {
 
         {wallet.address && !wallet.isWrongNetwork && verified && (
           <div>
-            <p className="text-sm font-medium text-ink">Milestones</p>
+            <p className="text-sm font-medium text-ink">Title</p>
+            <input
+              type="text"
+              placeholder="e.g. Clean Water for Riverside Village"
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              disabled={status === 'pending'}
+              maxLength={200}
+              className="mt-3 w-full rounded-lg border border-border px-3 py-2 text-sm text-ink outline-none transition-colors focus:border-accent"
+            />
+
+            <p className="mt-6 text-sm font-medium text-ink">Milestones</p>
             <div className="mt-3 space-y-3">
               {milestones.map((m, i) => (
                 <div key={i} className="flex items-center gap-2">
@@ -216,6 +244,12 @@ export default function CreateCampaign() {
                 ) : (
                   "It'll show up on the campaigns list once the indexer picks it up."
                 )}
+              </p>
+            )}
+
+            {titleSaveError && (
+              <p className="mt-2 text-xs text-red-600">
+                Campaign created, but saving the title failed: {titleSaveError}
               </p>
             )}
           </div>

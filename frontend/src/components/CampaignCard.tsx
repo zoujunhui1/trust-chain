@@ -1,6 +1,6 @@
 import { Link } from 'react-router-dom'
 import type { Campaign, Milestone } from '../lib/api'
-import { progressPercent, shortAddress, weiToEth } from '../lib/format'
+import { campaignTitle, progressPercent, shortAddress, weiToEth } from '../lib/format'
 import { campaignTheme } from '../lib/theme'
 import MilestoneChip from './MilestoneChip'
 
@@ -39,7 +39,7 @@ export default function CampaignCard({ campaign, verified, milestones }: Campaig
           </span>
         </div>
 
-        <h3 className="mt-2 text-lg font-semibold text-ink">Campaign #{campaign.id}</h3>
+        <h3 className="mt-2 text-lg font-semibold text-ink">{campaignTitle(campaign)}</h3>
 
         <div className="mt-6 h-2 w-full overflow-hidden rounded-full bg-border">
           <div className="h-full rounded-full" style={{ width: `${percent}%`, backgroundColor: theme.accent }} />

@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { ApiError, getCampaign, getCharity, listDonations } from '../lib/api'
 import type { Campaign, Donation, Milestone, MilestoneState } from '../lib/api'
-import { milestoneStatusText, progressPercent, shortAddress, weiToEth } from '../lib/format'
+import { campaignTitle, milestoneStatusText, progressPercent, shortAddress, weiToEth } from '../lib/format'
 import { campaignTheme } from '../lib/theme'
 import MilestoneChip from '../components/MilestoneChip'
 import DonationPanel from '../components/DonationPanel'
@@ -103,7 +103,7 @@ export default function CampaignDetail() {
             </div>
 
             <div className="mt-3 flex items-center gap-3">
-              <h1 className="text-3xl font-bold tracking-tight text-ink">Campaign #{campaign.id}</h1>
+              <h1 className="text-3xl font-bold tracking-tight text-ink">{campaignTitle(campaign)}</h1>
               {campaign.completed && (
                 <span className="rounded-full bg-proven-tint px-2.5 py-1 text-xs font-medium text-proven">
                   Completed
@@ -127,8 +127,8 @@ export default function CampaignDetail() {
             <div className="flex-1">
               <h2 className="text-lg font-semibold text-ink">About this campaign</h2>
               <p className="mt-2 max-w-[760px] text-sm text-muted">
-                This campaign hasn't published off-chain details (title, description) yet — only the
-                on-chain fields below are currently tracked.
+                This campaign hasn't published a description yet — only the on-chain fields below
+                are currently tracked.
               </p>
 
               <div className="mt-6 rounded-xl border border-border bg-white p-5 shadow-sm">

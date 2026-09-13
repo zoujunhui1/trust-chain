@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { listActivity, listCampaigns, listCharities } from '../lib/api'
 import type { ActivityEvent, ActivityEventType, Campaign, Charity } from '../lib/api'
-import { shortAddress, weiToEth } from '../lib/format'
+import { campaignTitle, shortAddress, weiToEth } from '../lib/format'
 
 const EVENT_LABEL: Record<ActivityEventType, (a: ActivityEvent) => string> = {
   CampaignCreated: () => 'Campaign Created',
@@ -35,6 +35,7 @@ export default function TransparencyDashboard() {
     }
   }, [])
 
+  const titleById = new Map(campaigns?.map((c) => [c.id, campaignTitle(c)]))
   const totalRaisedWei = campaigns?.reduce((sum, c) => sum + BigInt(c.raised), 0n) ?? 0n
   const activeCount = campaigns?.filter((c) => !c.completed).length ?? 0
   const completedCount = campaigns?.filter((c) => c.completed).length ?? 0
@@ -96,7 +97,7 @@ export default function TransparencyDashboard() {
                   <tr key={a.id} className="transition-colors hover:bg-page/60">
                     <td className="px-5 py-3.5">
                       <Link to={`/campaigns/${a.campaignId}`} className="text-ink hover:text-accent">
-                        Campaign #{a.campaignId}
+                        {titleById.get(a.campaignId) ?? `Campaign #${a.campaignId}`}
                       </Link>
                     </td>
                     <td className="px-5 py-3.5 text-ink">{EVENT_LABEL[a.eventType](a)}</td>

@@ -2,16 +2,22 @@
 // Package api is the read-side HTTP layer: it exposes store queries as REST
 // endpoints for the frontend.
 //
-// 基本只读，一个例外 / mostly read-only, one exception:
+// 基本只读，两个例外 / mostly read-only, two exceptions:
 //   所有链上状态的写（认证机构、建活动、捐款、放款）都由前端通过 MetaMask
-//   直接发交易上链，再由索引器同步回库，这条边界没变。唯一的例外是
-//   POST /api/users/connect：钱包连接时前端调它，记录"谁连过/什么角色/何时"，
-//   这不是链上状态，索引器管不到，所以由 API 直写。见 store/users.go。
+//   直接发交易上链，再由索引器同步回库，这条边界没变。两个例外都是"链上
+//   事件本来就不携带的数据"，索引器管不到，只能由 API 直写：
+//     - POST /api/users/connect：钱包连接时记录"谁连过/什么角色/何时"。见 store/users.go。
+//     - POST /api/campaigns/{id}/title：创建活动时顺带存个标题（合约的
+//       metadataHash 只是哈希，不是可解析指针）。见 store/campaign_metadata.go。
 //   All on-chain-state writes still happen on-chain via MetaMask, synced back
-//   by the indexer — that boundary is unchanged. The one exception is
-//   POST /api/users/connect: the frontend calls it on wallet connect to
-//   record who connected, as what role, and when — that's not on-chain state
-//   the indexer could pick up, so the API writes it directly. See store/users.go.
+//   by the indexer — that boundary is unchanged. Both exceptions are data
+//   on-chain events never carried in the first place, so the indexer has
+//   nothing to sync and the API writes it directly instead:
+//     - POST /api/users/connect: records who connected, as what role, and when.
+//       See store/users.go.
+//     - POST /api/campaigns/{id}/title: a title entered at creation time (the
+//       contract's metadataHash is just a hash, not a resolvable pointer).
+//       See store/campaign_metadata.go.
 package api
 
 import (
@@ -49,6 +55,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/charities/{address}", s.handleGetCharity)
 	mux.HandleFunc("GET /api/activity", s.handleListActivity)
 	mux.HandleFunc("POST /api/users/connect", s.handleConnectUser)
+	mux.HandleFunc("POST /api/campaigns/{id}/title", s.handleSetCampaignTitle)
 
 	// 用 CORS 中间件包一层，允许浏览器前端跨域访问。
 	// Wrap with CORS so the browser frontend can call across origins.
@@ -193,6 +200,47 @@ func (s *Server) handleConnectUser(w http.ResponseWriter, r *http.Request) {
 	addr := strings.ToLower(common.HexToAddress(req.Address).Hex())
 
 	if err := s.store.UpsertUser(r.Context(), addr, req.Role); err != nil {
+		writeError(w, http.StatusInternalServerError, "写入失败 / write failed")
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// setCampaignTitleRequest is the body of POST /api/campaigns/{id}/title.
+type setCampaignTitleRequest struct {
+	Title string `json:"title"`
+}
+
+const maxCampaignTitleLen = 200
+
+// handleSetCampaignTitle: POST /api/campaigns/{id}/title — stores a title for
+// a campaign (see store/campaign_metadata.go for why this isn't on-chain).
+// No ownership check: like /api/users/connect, this API has no auth/session
+// layer, so anyone who knows a campaign id can set its title. Acceptable for
+// this project's scope — nothing of real value moves through it, and every
+// action with real stakes (verify/create/donate/release) is still gated
+// on-chain — but it's a real gap if this API is ever exposed beyond a demo.
+func (s *Server) handleSetCampaignTitle(w http.ResponseWriter, r *http.Request) {
+	id, ok := parseID(w, r)
+	if !ok {
+		return
+	}
+	var req setCampaignTitleRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "请求体不是合法 JSON / malformed JSON body")
+		return
+	}
+	title := strings.TrimSpace(req.Title)
+	if title == "" {
+		writeError(w, http.StatusBadRequest, "title 不能为空 / title must not be empty")
+		return
+	}
+	if len(title) > maxCampaignTitleLen {
+		writeError(w, http.StatusBadRequest, "title 太长 / title too long")
+		return
+	}
+
+	if err := s.store.SetCampaignTitle(r.Context(), id, title); err != nil {
 		writeError(w, http.StatusInternalServerError, "写入失败 / write failed")
 		return
 	}

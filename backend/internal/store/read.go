@@ -31,6 +31,11 @@ type CampaignView struct {
 	CreatedBlock   uint64    `json:"createdBlock"`
 	CreatedTx      string    `json:"createdTx"`
 	CreatedAt      time.Time `json:"createdAt"`
+	// Title 来自 campaign_metadata（LEFT JOIN），没设置过就是 nil ——
+	// 前端此时回退显示 "Campaign #{id}"。见 store/campaign_metadata.go。
+	// From campaign_metadata (LEFT JOIN); nil if never set — the frontend
+	// falls back to "Campaign #{id}". See store/campaign_metadata.go.
+	Title *string `json:"title"`
 }
 
 // MilestoneView 是一个里程碑的对外视图。/ MilestoneView is a milestone's outward view.
@@ -76,10 +81,12 @@ type ActivityView struct {
 // ListCampaigns returns campaigns, newest first (by creation block).
 func (s *Store) ListCampaigns(ctx context.Context, limit, offset int) ([]CampaignView, error) {
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT id, charity, goal, raised, released, milestone_count,
-		       COALESCE(metadata_hash, ''), completed, created_block, created_tx, created_at
-		FROM campaigns
-		ORDER BY created_block DESC
+		SELECT c.id, c.charity, c.goal, c.raised, c.released, c.milestone_count,
+		       COALESCE(c.metadata_hash, ''), c.completed, c.created_block, c.created_tx, c.created_at,
+		       m.title
+		FROM campaigns c
+		LEFT JOIN campaign_metadata m ON m.campaign_id = c.id
+		ORDER BY c.created_block DESC
 		LIMIT ? OFFSET ?`, limit, offset)
 	if err != nil {
 		return nil, fmt.Errorf("store: 查活动列表失败 / list campaigns: %w", err)
@@ -91,11 +98,15 @@ func (s *Store) ListCampaigns(ctx context.Context, limit, offset int) ([]Campaig
 	list := []CampaignView{}
 	for rows.Next() {
 		var c CampaignView
+		var title sql.NullString
 		if err := rows.Scan(
 			&c.ID, &c.Charity, &c.Goal, &c.Raised, &c.Released, &c.MilestoneCount,
-			&c.MetadataHash, &c.Completed, &c.CreatedBlock, &c.CreatedTx, &c.CreatedAt,
+			&c.MetadataHash, &c.Completed, &c.CreatedBlock, &c.CreatedTx, &c.CreatedAt, &title,
 		); err != nil {
 			return nil, fmt.Errorf("store: 扫描活动失败 / scan campaign: %w", err)
+		}
+		if title.Valid {
+			c.Title = &title.String
 		}
 		list = append(list, c)
 	}
@@ -106,14 +117,21 @@ func (s *Store) ListCampaigns(ctx context.Context, limit, offset int) ([]Campaig
 // GetCampaign returns one campaign; found=false means not found (API returns 404).
 func (s *Store) GetCampaign(ctx context.Context, id uint64) (c CampaignView, found bool, err error) {
 	row := s.db.QueryRowContext(ctx, `
-		SELECT id, charity, goal, raised, released, milestone_count,
-		       COALESCE(metadata_hash, ''), completed, created_block, created_tx, created_at
-		FROM campaigns WHERE id = ?`, id)
+		SELECT c.id, c.charity, c.goal, c.raised, c.released, c.milestone_count,
+		       COALESCE(c.metadata_hash, ''), c.completed, c.created_block, c.created_tx, c.created_at,
+		       m.title
+		FROM campaigns c
+		LEFT JOIN campaign_metadata m ON m.campaign_id = c.id
+		WHERE c.id = ?`, id)
+	var title sql.NullString
 	switch err = row.Scan(
 		&c.ID, &c.Charity, &c.Goal, &c.Raised, &c.Released, &c.MilestoneCount,
-		&c.MetadataHash, &c.Completed, &c.CreatedBlock, &c.CreatedTx, &c.CreatedAt,
+		&c.MetadataHash, &c.Completed, &c.CreatedBlock, &c.CreatedTx, &c.CreatedAt, &title,
 	); err {
 	case nil:
+		if title.Valid {
+			c.Title = &title.String
+		}
 		return c, true, nil
 	case sql.ErrNoRows:
 		return CampaignView{}, false, nil

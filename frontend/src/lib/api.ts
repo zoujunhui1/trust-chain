@@ -1,6 +1,6 @@
 // Typed client for the backend REST API (backend/internal/api) — mostly
-// read-only; connectUser() below is the one write (see that package's doc
-// comment for why).
+// read-only; connectUser() and setCampaignTitle() below are the two writes
+// (see that package's doc comment for why).
 // All amounts come back as decimal-wei strings (uint256 can overflow JS numbers).
 
 const BASE_URL = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8090'
@@ -17,6 +17,9 @@ export interface Campaign {
   createdBlock: number
   createdTx: string
   createdAt: string
+  // Off-chain — the contract's metadataHash isn't a resolvable pointer, so
+  // this comes from campaign_metadata via the API. null until set.
+  title: string | null
 }
 
 // Milestone state as stored on-chain: 0 = Locked, 1 = Released, 2 = Proven.
@@ -85,6 +88,18 @@ async function getJSON<T>(path: string): Promise<T> {
   return res.json() as Promise<T>
 }
 
+async function postJSON(path: string, body: unknown): Promise<void> {
+  const res = await fetch(`${BASE_URL}${path}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  })
+  if (!res.ok) {
+    const errBody = await res.json().catch(() => null)
+    throw new ApiError(res.status, errBody?.error ?? `${res.status} ${res.statusText}`)
+  }
+}
+
 export function listCampaigns(): Promise<Campaign[]> {
   return getJSON('/api/campaigns')
 }
@@ -113,14 +128,13 @@ export function listActivity(): Promise<ActivityEvent[]> {
 // it (lib/role.ts). Not a source of truth for permissions — just a "who
 // connected, as what, when" log. Callers should fire-and-forget this; a
 // failure here shouldn't block the wallet UI.
-export async function connectUser(address: string, role: 'admin' | 'charity' | 'donor'): Promise<void> {
-  const res = await fetch(`${BASE_URL}/api/users/connect`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ address, role }),
-  })
-  if (!res.ok) {
-    const body = await res.json().catch(() => null)
-    throw new ApiError(res.status, body?.error ?? `${res.status} ${res.statusText}`)
-  }
+export function connectUser(address: string, role: 'admin' | 'charity' | 'donor'): Promise<void> {
+  return postJSON('/api/users/connect', { address, role })
+}
+
+// Stores a campaign's title (see the Campaign.title comment for why this
+// isn't on-chain). Call right after the create-campaign tx confirms — no
+// need to wait for the indexer to pick up the campaign row first.
+export function setCampaignTitle(id: number, title: string): Promise<void> {
+  return postJSON(`/api/campaigns/${id}/title`, { title })
 }

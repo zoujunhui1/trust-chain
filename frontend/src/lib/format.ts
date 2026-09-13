@@ -6,6 +6,13 @@ export function weiToEth(wei: string, decimals = 3): string {
   return Number(formatEther(wei)).toFixed(decimals)
 }
 
+// Campaign.title is off-chain and only set once someone calls
+// setCampaignTitle() — falls back to the id for anything created before
+// this existed, or if the title save failed.
+export function campaignTitle(campaign: Pick<Campaign, 'id' | 'title'>): string {
+  return campaign.title ?? `Campaign #${campaign.id}`
+}
+
 // "0x092dD42fFc79E13217985C1bB4A9155Fa085cD9A" -> "0x092d…cD9A"
 export function shortAddress(address: string): string {
   if (address.length <= 12) return address

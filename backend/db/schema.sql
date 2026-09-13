@@ -121,3 +121,28 @@ CREATE TABLE IF NOT EXISTS users (
                                              COMMENT '最近一次连接时间 / most recent connect time',
   PRIMARY KEY (address)
 ) ENGINE=InnoDB COMMENT='连接过钱包的用户(API 直写，非索引器) / wallet-connected users (API-written, not indexer)';
+
+-- 活动标题：第二个不是由链上事件重建的表。合约的 metadataHash 只是 bytes32
+-- 哈希（校验用，不是可解析指针），链上事件从没带过标题文字，所以这个字段
+-- 天生不在 campaigns 表里，靠这张独立的表补上。
+-- 特意不建外键关联 campaigns(id)：创建活动的交易一确认，前端就会调用
+-- POST /api/campaigns/{id}/title，这通常比 indexer 把该活动写进 campaigns
+-- 表还快（indexer 要等 CONFIRMATIONS 个块 + 下一次轮询），建外键会导致这个
+-- 请求在那段时间差内失败。读的时候用 LEFT JOIN，campaigns 表还没同步到位
+-- 也不影响标题已经先存上。
+-- Campaign titles: the second table not rebuilt from on-chain events. The
+-- contract's metadataHash is just a bytes32 hash (for verification, not a
+-- resolvable pointer), so on-chain events never carry title text — this
+-- table fills that gap.
+-- Deliberately no FK to campaigns(id): the frontend calls
+-- POST /api/campaigns/{id}/title as soon as the create-campaign tx confirms,
+-- which is usually faster than the indexer inserting that campaign's row
+-- (it waits CONFIRMATIONS blocks + the next poll) — an FK would make this
+-- write fail during that gap. Reads LEFT JOIN this table, so campaigns not
+-- yet indexed don't block a title from being stored first.
+CREATE TABLE IF NOT EXISTS campaign_metadata (
+  campaign_id  BIGINT UNSIGNED NOT NULL COMMENT '链上 campaignId / on-chain campaign id',
+  title        VARCHAR(200)    NOT NULL COMMENT '活动标题(前端创建时填写) / campaign title, entered at creation',
+  created_at   TIMESTAMP       NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '入库时间 / stored at',
+  PRIMARY KEY (campaign_id)
+) ENGINE=InnoDB COMMENT='活动标题(API 直写，非索引器) / campaign titles (API-written, not indexer)';
