@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { parseEther } from 'ethers'
-import { Link } from 'react-router-dom'
+import { useNavigate } from 'react-router-dom'
 import { createCampaignRecord, getCharity, setCampaignMetadata } from '../lib/api'
 import { createCampaign, parseCreatedCampaignId } from '../lib/escrow'
 import { shortAddress } from '../lib/format'
@@ -11,6 +11,7 @@ type TxStatus = 'idle' | 'pending' | 'success' | 'error'
 
 export default function CreateCampaign() {
   const wallet = useWallet()
+  const navigate = useNavigate()
   const [verified, setVerified] = useState<boolean | null>(null)
   const [title, setTitle] = useState('')
   const [description, setDescription] = useState('')
@@ -106,6 +107,10 @@ export default function CreateCampaign() {
         }).catch((err) => {
           setMetadataSaveError(err instanceof Error ? err.message : 'Failed to save the campaign details.')
         })
+        // It's already in the campaigns list (see createCampaignRecord above)
+        // — go straight to its page instead of making the charity click
+        // through from here.
+        navigate(`/campaigns/${id}`)
       }
     } catch (err) {
       setStatus('error')
@@ -283,7 +288,11 @@ export default function CreateCampaign() {
               </p>
             )}
 
-            {status === 'success' && txHash && (
+            {/* createdId !== null redirects to the campaign page immediately (see
+                handleSubmit) — this only has time to show for the rare case where
+                the id couldn't be parsed from the receipt, so there's nowhere to
+                redirect to. */}
+            {status === 'success' && txHash && createdId === null && (
               <p className="mt-3 text-xs text-proven">
                 Campaign created —{' '}
                 <a
@@ -294,18 +303,7 @@ export default function CreateCampaign() {
                 >
                   view on Etherscan
                 </a>
-                .{' '}
-                {createdId !== null ? (
-                  <>
-                    It's already on{' '}
-                    <Link to={`/campaigns/${createdId}`} className="underline">
-                      its campaign page
-                    </Link>{' '}
-                    and the campaigns list.
-                  </>
-                ) : (
-                  "It'll show up on the campaigns list once the indexer picks it up."
-                )}
+                . It'll show up on the campaigns list once the indexer picks it up.
               </p>
             )}
 
