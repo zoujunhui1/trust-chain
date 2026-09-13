@@ -36,6 +36,19 @@ CREATE TABLE IF NOT EXISTS charities (
 
 -- 募捐活动：CampaignCreated 时插入，metadata/里程碑金额通过合约 view 补齐；
 -- raised/released 由 donations/milestones 聚合得到，保证可重复执行（幂等）。
+-- confirmed 是个例外：这行也可能由 API 乐观插入（见 POST /api/campaigns，
+-- backend/internal/api），交易一确认前端就直接写库，不用等 indexer 追上
+-- CONFIRMATIONS 个块+下一次轮询。indexer 真正处理到这个事件时会把 confirmed
+-- 置 true，并且用链上数据覆盖其它字段（以防乐观写入的数据有误）；已经
+-- confirmed=true 的行不会再被乐观写入覆盖或降级——见 store.InsertCampaign。
+-- confirmed is the one exception: this row may also be optimistically
+-- inserted by the API (see POST /api/campaigns, backend/internal/api) the
+-- moment the create-campaign tx confirms, instead of waiting for the indexer
+-- to catch up (CONFIRMATIONS blocks + the next poll). When the indexer does
+-- process the real event, it sets confirmed=true and overwrites the other
+-- fields with on-chain truth (in case the optimistic write was wrong); a row
+-- already confirmed=true is never overwritten or downgraded by a later
+-- optimistic write — see store.InsertCampaign.
 CREATE TABLE IF NOT EXISTS campaigns (
   id               BIGINT UNSIGNED NOT NULL COMMENT '链上 campaignId / on-chain campaign id',
   charity          CHAR(42)        NOT NULL COMMENT '发起机构地址 / charity address',
@@ -45,6 +58,7 @@ CREATE TABLE IF NOT EXISTS campaigns (
   milestone_count  INT UNSIGNED    NOT NULL COMMENT '里程碑数量 / number of milestones',
   metadata_hash    CHAR(66)        NULL COMMENT 'IPFS 元数据哈希(view 补齐) / ipfs metadata hash',
   completed        BOOLEAN         NOT NULL DEFAULT FALSE COMMENT '是否完成(收到末个收据) / completed flag',
+  confirmed        BOOLEAN         NOT NULL DEFAULT TRUE COMMENT '是否已被索引器用链上事件确认过 / confirmed against a real on-chain event by the indexer',
   created_block    BIGINT UNSIGNED NOT NULL COMMENT '创建所在区块 / creation block',
   created_tx       CHAR(66)        NOT NULL COMMENT '创建交易哈希 / creation tx hash',
   created_at       TIMESTAMP       NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '入库时间 / indexed at',
@@ -123,26 +137,33 @@ CREATE TABLE IF NOT EXISTS users (
 ) ENGINE=InnoDB COMMENT='连接过钱包的用户(API 直写，非索引器) / wallet-connected users (API-written, not indexer)';
 
 -- 活动标题：第二个不是由链上事件重建的表。合约的 metadataHash 只是 bytes32
--- 哈希（校验用，不是可解析指针），链上事件从没带过标题文字，所以这个字段
--- 天生不在 campaigns 表里，靠这张独立的表补上。
+-- 哈希（校验用，不是可解析指针），链上事件从没带过标题/详情/主题这些字段，
+-- 所以这些字段天生不在 campaigns 表里，靠这张独立的表补上。
 -- 特意不建外键关联 campaigns(id)：创建活动的交易一确认，前端就会调用
--- POST /api/campaigns/{id}/title，这通常比 indexer 把该活动写进 campaigns
+-- POST /api/campaigns/{id}/metadata，这通常比 indexer 把该活动写进 campaigns
 -- 表还快（indexer 要等 CONFIRMATIONS 个块 + 下一次轮询），建外键会导致这个
 -- 请求在那段时间差内失败。读的时候用 LEFT JOIN，campaigns 表还没同步到位
--- 也不影响标题已经先存上。
--- Campaign titles: the second table not rebuilt from on-chain events. The
--- contract's metadataHash is just a bytes32 hash (for verification, not a
--- resolvable pointer), so on-chain events never carry title text — this
--- table fills that gap.
+-- 也不影响这些字段已经先存上。
+-- theme 是可选的：前端建活动时可以选一个主题（对应 frontend/src/lib/theme.ts
+-- 里某个主题的 key），没选就留 NULL，前端会退回按 id 确定性分配主题的老逻辑。
+-- Campaign title/description/theme: the second table not rebuilt from
+-- on-chain events. The contract's metadataHash is just a bytes32 hash (for
+-- verification, not a resolvable pointer), so on-chain events never carry
+-- any of these — this table fills that gap.
 -- Deliberately no FK to campaigns(id): the frontend calls
--- POST /api/campaigns/{id}/title as soon as the create-campaign tx confirms,
--- which is usually faster than the indexer inserting that campaign's row
--- (it waits CONFIRMATIONS blocks + the next poll) — an FK would make this
--- write fail during that gap. Reads LEFT JOIN this table, so campaigns not
--- yet indexed don't block a title from being stored first.
+-- POST /api/campaigns/{id}/metadata as soon as the create-campaign tx
+-- confirms, which is usually faster than the indexer inserting that
+-- campaign's row (it waits CONFIRMATIONS blocks + the next poll) — an FK
+-- would make this write fail during that gap. Reads LEFT JOIN this table, so
+-- campaigns not yet indexed don't block metadata from being stored first.
+-- theme is optional: the charity can pick one at creation (matching a key in
+-- frontend/src/lib/theme.ts); left NULL, the frontend falls back to its old
+-- deterministic by-id assignment.
 CREATE TABLE IF NOT EXISTS campaign_metadata (
   campaign_id  BIGINT UNSIGNED NOT NULL COMMENT '链上 campaignId / on-chain campaign id',
   title        VARCHAR(200)    NOT NULL COMMENT '活动标题(前端创建时填写) / campaign title, entered at creation',
+  description  TEXT            NULL COMMENT '活动详情(可选) / campaign description (optional)',
+  theme        VARCHAR(32)     NULL COMMENT '选的主题 key(可选，见 lib/theme.ts) / chosen theme key (optional, see lib/theme.ts)',
   created_at   TIMESTAMP       NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '入库时间 / stored at',
   PRIMARY KEY (campaign_id)
-) ENGINE=InnoDB COMMENT='活动标题(API 直写，非索引器) / campaign titles (API-written, not indexer)';
+) ENGINE=InnoDB COMMENT='活动标题/详情/主题(API 直写，非索引器) / campaign title, description, theme (API-written, not indexer)';

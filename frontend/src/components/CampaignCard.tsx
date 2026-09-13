@@ -12,7 +12,7 @@ interface CampaignCardProps {
 
 export default function CampaignCard({ campaign, verified, milestones }: CampaignCardProps) {
   const percent = progressPercent(campaign.raised, campaign.goal)
-  const theme = campaignTheme(campaign.id)
+  const theme = campaignTheme(campaign)
 
   return (
     <div className="flex flex-col overflow-hidden rounded-xl border border-border bg-white shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-lg">
@@ -39,7 +39,14 @@ export default function CampaignCard({ campaign, verified, milestones }: Campaig
           </span>
         </div>
 
-        <h3 className="mt-2 text-lg font-semibold text-ink">{campaignTitle(campaign)}</h3>
+        <div className="mt-2 flex items-center gap-2">
+          <h3 className="text-lg font-semibold text-ink">{campaignTitle(campaign)}</h3>
+          {!campaign.confirmed && (
+            <span className="shrink-0 rounded-full bg-released-tint px-2 py-0.5 text-[10px] font-medium text-released">
+              Confirming…
+            </span>
+          )}
+        </div>
 
         <div className="mt-6 h-2 w-full overflow-hidden rounded-full bg-border">
           <div className="h-full rounded-full" style={{ width: `${percent}%`, backgroundColor: theme.accent }} />

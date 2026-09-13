@@ -23,7 +23,7 @@ export default function CampaignDetail() {
   const [verified, setVerified] = useState(false)
   const [notFound, setNotFound] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const theme = campaign ? campaignTheme(campaign.id) : null
+  const theme = campaign ? campaignTheme(campaign) : null
 
   useEffect(() => {
     if (!id) return
@@ -109,6 +109,11 @@ export default function CampaignDetail() {
                   Completed
                 </span>
               )}
+              {!campaign.confirmed && (
+                <span className="rounded-full bg-released-tint px-2.5 py-1 text-xs font-medium text-released">
+                  Confirming on-chain…
+                </span>
+              )}
             </div>
 
             <div className="mt-6 h-2.5 w-full max-w-[700px] overflow-hidden rounded-full bg-border">
@@ -126,9 +131,9 @@ export default function CampaignDetail() {
           <div className="flex flex-col gap-10 pb-16 lg:flex-row">
             <div className="flex-1">
               <h2 className="text-lg font-semibold text-ink">About this campaign</h2>
-              <p className="mt-2 max-w-[760px] text-sm text-muted">
-                This campaign hasn't published a description yet — only the on-chain fields below
-                are currently tracked.
+              <p className="mt-2 max-w-[760px] whitespace-pre-line text-sm text-muted">
+                {campaign.description ??
+                  "This campaign hasn't published a description yet — only the on-chain fields below are currently tracked."}
               </p>
 
               <div className="mt-6 rounded-xl border border-border bg-white p-5 shadow-sm">

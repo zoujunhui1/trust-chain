@@ -226,7 +226,7 @@ func (ix *Indexer) onCampaignCreated(ctx context.Context, lg *types.Log) error {
 	for i, m := range msRaw {
 		ms[i] = store.Milestone{CampaignID: c.ID, Idx: uint32(i), Amount: m.Amount}
 	}
-	if err := ix.store.InsertCampaign(ctx, c, ms); err != nil {
+	if err := ix.store.InsertCampaign(ctx, c, ms, true); err != nil {
 		return err
 	}
 	return ix.store.InsertActivity(ctx, store.ActivityEvent{

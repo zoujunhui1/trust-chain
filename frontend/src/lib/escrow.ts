@@ -19,9 +19,9 @@ export function donate(signer: Signer, campaignId: number | string, amountEth: s
   return contract.donate(campaignId, { value: parseEther(amountEth) }) as Promise<TransactionResponse>
 }
 
-// metadataHash is left as the zero hash — this app doesn't have an off-chain
-// metadata store yet (see CampaignList/Detail: titles fall back to
-// "Campaign #{id}"), so there's nothing meaningful to hash.
+// metadataHash is left as the zero hash — title/description/theme live in
+// the backend's campaign_metadata table (set via setCampaignMetadata) rather
+// than in anything this hash could point to.
 export function createCampaign(signer: Signer, milestoneAmountsEth: string[]): Promise<TransactionResponse> {
   const contract = new Contract(ESCROW_ADDRESS, ESCROW_ABI, signer)
   const amountsWei = milestoneAmountsEth.map((a) => parseEther(a))

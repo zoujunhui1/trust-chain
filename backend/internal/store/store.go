@@ -123,9 +123,26 @@ func (s *Store) UpsertCharity(ctx context.Context, addr string, verified bool, b
 
 // --- 活动 + 里程碑 / campaign + milestones ---
 
-// InsertCampaign 在一个事务里插入活动及其里程碑（都用 INSERT IGNORE，幂等）。
-// InsertCampaign inserts a campaign and its milestones in one tx (INSERT IGNORE = idempotent).
-func (s *Store) InsertCampaign(ctx context.Context, c Campaign, ms []Milestone) error {
+// InsertCampaign 在一个事务里插入/确认活动及其里程碑。
+//
+// confirmed 区分两种调用方 / confirmed distinguishes two callers:
+//   - indexer 处理到真实链上事件时传 true：数据可信，会覆盖任何早先由 API
+//     乐观写入（见 POST /api/campaigns）的字段，并把 confirmed 推成 true。
+//   - API 乐观写入（交易刚确认，indexer 还没追上）传 false：如果这行已经被
+//     indexer 确认过，这次调用不会覆盖/降级任何字段。
+//   - When the indexer processes a real on-chain event it passes true: the
+//     data is authoritative, overwrites any earlier optimistic write from
+//     POST /api/campaigns, and pushes confirmed to true.
+//   - The API's optimistic write (tx just confirmed, indexer hasn't caught
+//     up yet) passes false: if the row is already indexer-confirmed, this
+//     call never overwrites or downgrades any field.
+//
+// 里程碑本身没有这个真假区分——乐观写入提交的金额和最终链上事件的金额是
+// 同一笔交易的数据，不存在"谁更可信"的问题，所以还是用 INSERT IGNORE。
+// Milestones don't need this distinction — the amounts an optimistic write
+// submits are from the very same transaction the eventual on-chain event
+// describes, so there's nothing to reconcile; INSERT IGNORE is enough.
+func (s *Store) InsertCampaign(ctx context.Context, c Campaign, ms []Milestone, confirmed bool) error {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("store: 开事务失败 / begin tx: %w", err)
@@ -133,10 +150,18 @@ func (s *Store) InsertCampaign(ctx context.Context, c Campaign, ms []Milestone) 
 	defer tx.Rollback() // 已 Commit 后再 Rollback 是无操作 / no-op after commit
 
 	if _, err = tx.ExecContext(ctx, `
-		INSERT IGNORE INTO campaigns
-			(id, charity, goal, milestone_count, metadata_hash, created_block, created_tx)
-		VALUES (?, ?, ?, ?, ?, ?, ?)`,
-		c.ID, c.Charity, c.Goal.String(), c.MilestoneCount, c.MetadataHash, c.CreatedBlock, c.CreatedTx,
+		INSERT INTO campaigns
+			(id, charity, goal, milestone_count, metadata_hash, created_block, created_tx, confirmed)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+		ON DUPLICATE KEY UPDATE
+			charity         = IF(confirmed, charity, VALUES(charity)),
+			goal            = IF(confirmed, goal, VALUES(goal)),
+			milestone_count = IF(confirmed, milestone_count, VALUES(milestone_count)),
+			metadata_hash   = IF(confirmed, metadata_hash, VALUES(metadata_hash)),
+			created_block   = IF(confirmed, created_block, VALUES(created_block)),
+			created_tx      = IF(confirmed, created_tx, VALUES(created_tx)),
+			confirmed       = GREATEST(confirmed, VALUES(confirmed))`,
+		c.ID, c.Charity, c.Goal.String(), c.MilestoneCount, c.MetadataHash, c.CreatedBlock, c.CreatedTx, confirmed,
 	); err != nil {
 		return fmt.Errorf("store: 插入活动失败 / insert campaign: %w", err)
 	}

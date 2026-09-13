@@ -1,6 +1,6 @@
 // Typed client for the backend REST API (backend/internal/api) — mostly
-// read-only; connectUser() and setCampaignTitle() below are the two writes
-// (see that package's doc comment for why).
+// read-only; connectUser(), setCampaignMetadata() and createCampaignRecord()
+// below are the writes (see that package's doc comment for why).
 // All amounts come back as decimal-wei strings (uint256 can overflow JS numbers).
 
 const BASE_URL = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8090'
@@ -17,9 +17,16 @@ export interface Campaign {
   createdBlock: number
   createdTx: string
   createdAt: string
+  // false right after createCampaignRecord() optimistically inserts this row
+  // — the indexer hasn't confirmed it against a real on-chain event yet
+  // (usually takes ~1-2 minutes). See backend/internal/store's InsertCampaign
+  // comment on "confirmed".
+  confirmed: boolean
   // Off-chain — the contract's metadataHash isn't a resolvable pointer, so
-  // this comes from campaign_metadata via the API. null until set.
+  // these come from campaign_metadata via the API. null until set.
   title: string | null
+  description: string | null
+  theme: string | null // a CampaignTheme.key from lib/theme.ts, or null
 }
 
 // Milestone state as stored on-chain: 0 = Locked, 1 = Released, 2 = Proven.
@@ -132,9 +139,34 @@ export function connectUser(address: string, role: 'admin' | 'charity' | 'donor'
   return postJSON('/api/users/connect', { address, role })
 }
 
-// Stores a campaign's title (see the Campaign.title comment for why this
-// isn't on-chain). Call right after the create-campaign tx confirms — no
-// need to wait for the indexer to pick up the campaign row first.
-export function setCampaignTitle(id: number, title: string): Promise<void> {
-  return postJSON(`/api/campaigns/${id}/title`, { title })
+// Stores a campaign's title/description/theme (see the Campaign fields'
+// comments for why these aren't on-chain). Call right after the
+// create-campaign tx confirms — no need to wait for the indexer to pick up
+// the campaign row first.
+export function setCampaignMetadata(
+  id: number,
+  metadata: { title: string; description?: string; theme?: string },
+): Promise<void> {
+  return postJSON(`/api/campaigns/${id}/metadata`, metadata)
+}
+
+// Optimistically records a campaign the moment its create-campaign tx
+// confirms, so it shows up in listCampaigns()/getCampaign() immediately
+// instead of after the indexer catches up (~1-2 minutes: CONFIRMATIONS
+// blocks + the next poll). Comes back as Campaign.confirmed === false until
+// the indexer reconciles it against the real on-chain event.
+export function createCampaignRecord(params: {
+  id: number
+  charity: string
+  milestoneAmountsWei: string[]
+  createdBlock: number
+  createdTx: string
+}): Promise<void> {
+  return postJSON('/api/campaigns', {
+    id: params.id,
+    charity: params.charity,
+    milestoneAmounts: params.milestoneAmountsWei,
+    createdBlock: params.createdBlock,
+    createdTx: params.createdTx,
+  })
 }

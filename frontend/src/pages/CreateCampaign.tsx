@@ -1,8 +1,10 @@
 import { useEffect, useState } from 'react'
+import { parseEther } from 'ethers'
 import { Link } from 'react-router-dom'
-import { getCharity, setCampaignTitle } from '../lib/api'
+import { createCampaignRecord, getCharity, setCampaignMetadata } from '../lib/api'
 import { createCampaign, parseCreatedCampaignId } from '../lib/escrow'
 import { shortAddress } from '../lib/format'
+import { listThemes } from '../lib/theme'
 import { useWallet } from '../lib/wallet'
 
 type TxStatus = 'idle' | 'pending' | 'success' | 'error'
@@ -11,15 +13,18 @@ export default function CreateCampaign() {
   const wallet = useWallet()
   const [verified, setVerified] = useState<boolean | null>(null)
   const [title, setTitle] = useState('')
+  const [description, setDescription] = useState('')
+  const [theme, setTheme] = useState('') // a CampaignTheme.key, or '' for "no preference"
   const [milestones, setMilestones] = useState<string[]>([''])
   const [status, setStatus] = useState<TxStatus>('idle')
   const [txHash, setTxHash] = useState<string | null>(null)
   const [createdId, setCreatedId] = useState<number | null>(null)
   const [txError, setTxError] = useState<string | null>(null)
-  // The on-chain tx can still succeed even if this off-chain save fails —
-  // tracked separately so a title-save hiccup doesn't look like the
-  // campaign itself failed to create.
-  const [titleSaveError, setTitleSaveError] = useState<string | null>(null)
+  // The on-chain tx can still succeed even if these off-chain saves fail —
+  // tracked separately so a save hiccup doesn't look like the campaign
+  // itself failed to create.
+  const [recordSaveError, setRecordSaveError] = useState<string | null>(null)
+  const [metadataSaveError, setMetadataSaveError] = useState<string | null>(null)
 
   useEffect(() => {
     if (!wallet.address) {
@@ -62,8 +67,10 @@ export default function CreateCampaign() {
     setTxError(null)
     setTxHash(null)
     setCreatedId(null)
-    setTitleSaveError(null)
+    setRecordSaveError(null)
+    setMetadataSaveError(null)
     try {
+      const charity = wallet.address!
       const signer = await wallet.getSigner()
       const tx = await createCampaign(signer, amounts)
       setTxHash(tx.hash)
@@ -72,13 +79,32 @@ export default function CreateCampaign() {
       setCreatedId(id)
       setStatus('success')
       const savedTitle = title.trim()
+      const savedDescription = description.trim()
+      const savedTheme = theme
       setMilestones([''])
       setTitle('')
-      // Save the title off-chain — doesn't need to wait for the indexer to
-      // pick up the campaign row (see campaign_metadata's schema comment).
-      if (id !== null) {
-        setCampaignTitle(id, savedTitle).catch((err) => {
-          setTitleSaveError(err instanceof Error ? err.message : 'Failed to save the title.')
+      setDescription('')
+      setTheme('')
+
+      if (id !== null && receipt) {
+        // Both calls are independent inserts (no FK between campaigns and
+        // campaign_metadata — see that table's schema comment), so they can
+        // go out in parallel and fail independently.
+        createCampaignRecord({
+          id,
+          charity,
+          milestoneAmountsWei: amounts.map((a) => parseEther(a).toString()),
+          createdBlock: receipt.blockNumber,
+          createdTx: receipt.hash,
+        }).catch((err) => {
+          setRecordSaveError(err instanceof Error ? err.message : 'Failed to save the campaign record.')
+        })
+        setCampaignMetadata(id, {
+          title: savedTitle,
+          description: savedDescription || undefined,
+          theme: savedTheme || undefined,
+        }).catch((err) => {
+          setMetadataSaveError(err instanceof Error ? err.message : 'Failed to save the campaign details.')
         })
       }
     } catch (err) {
@@ -155,6 +181,42 @@ export default function CreateCampaign() {
               maxLength={200}
               className="mt-3 w-full rounded-lg border border-border px-3 py-2 text-sm text-ink outline-none transition-colors focus:border-accent"
             />
+
+            <p className="mt-6 text-sm font-medium text-ink">
+              Details <span className="font-normal text-muted">(optional)</span>
+            </p>
+            <textarea
+              placeholder="What is this campaign for, and how will the funds be used?"
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              disabled={status === 'pending'}
+              rows={3}
+              maxLength={5000}
+              className="mt-3 w-full resize-none rounded-lg border border-border px-3 py-2 text-sm text-ink outline-none transition-colors focus:border-accent"
+            />
+
+            <p className="mt-6 text-sm font-medium text-ink">
+              Theme <span className="font-normal text-muted">(optional — picks one for you otherwise)</span>
+            </p>
+            <div className="mt-3 flex flex-wrap gap-2">
+              {listThemes().map((t) => (
+                <button
+                  key={t.key}
+                  type="button"
+                  onClick={() => setTheme((prev) => (prev === t.key ? '' : t.key))}
+                  disabled={status === 'pending'}
+                  className="flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-medium transition-colors disabled:opacity-50"
+                  style={
+                    theme === t.key
+                      ? { borderColor: t.accent, color: t.accent, backgroundColor: `${t.accent}14` }
+                      : { borderColor: 'var(--color-border)', color: 'var(--color-muted)' }
+                  }
+                >
+                  <span aria-hidden="true">{t.emoji}</span>
+                  {t.label}
+                </button>
+              ))}
+            </div>
 
             <p className="mt-6 text-sm font-medium text-ink">Milestones</p>
             <div className="mt-3 space-y-3">
@@ -235,11 +297,11 @@ export default function CreateCampaign() {
                 .{' '}
                 {createdId !== null ? (
                   <>
-                    It'll show up on{' '}
+                    It's already on{' '}
                     <Link to={`/campaigns/${createdId}`} className="underline">
                       its campaign page
                     </Link>{' '}
-                    once the indexer picks it up.
+                    and the campaigns list.
                   </>
                 ) : (
                   "It'll show up on the campaigns list once the indexer picks it up."
@@ -247,9 +309,14 @@ export default function CreateCampaign() {
               </p>
             )}
 
-            {titleSaveError && (
+            {recordSaveError && (
               <p className="mt-2 text-xs text-red-600">
-                Campaign created, but saving the title failed: {titleSaveError}
+                Campaign created, but it may take longer than usual to appear: {recordSaveError}
+              </p>
+            )}
+            {metadataSaveError && (
+              <p className="mt-2 text-xs text-red-600">
+                Campaign created, but saving its details failed: {metadataSaveError}
               </p>
             )}
           </div>

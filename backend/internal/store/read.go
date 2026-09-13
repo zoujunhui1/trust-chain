@@ -31,11 +31,22 @@ type CampaignView struct {
 	CreatedBlock   uint64    `json:"createdBlock"`
 	CreatedTx      string    `json:"createdTx"`
 	CreatedAt      time.Time `json:"createdAt"`
-	// Title 来自 campaign_metadata（LEFT JOIN），没设置过就是 nil ——
-	// 前端此时回退显示 "Campaign #{id}"。见 store/campaign_metadata.go。
+	// Confirmed 是 false 时，这行是 API 乐观写入的（交易刚确认，indexer 还没
+	// 追上），前端应该显示"正在确认"之类的提示。见 store.InsertCampaign。
+	// False means this row was written optimistically by the API (tx just
+	// confirmed, indexer hasn't caught up yet) — the frontend should show
+	// something like "confirming on-chain…". See store.InsertCampaign.
+	Confirmed bool `json:"confirmed"`
+	// Title/Description/Theme 来自 campaign_metadata（LEFT JOIN），没设置过
+	// 就是 nil —— 前端 Title 缺失时回退显示 "Campaign #{id}"，Theme 缺失时
+	// 回退成按 id 确定性分配。见 store/campaign_metadata.go。
 	// From campaign_metadata (LEFT JOIN); nil if never set — the frontend
-	// falls back to "Campaign #{id}". See store/campaign_metadata.go.
-	Title *string `json:"title"`
+	// falls back to "Campaign #{id}" for a missing title, and its old
+	// deterministic-by-id pick for a missing theme. See
+	// store/campaign_metadata.go.
+	Title       *string `json:"title"`
+	Description *string `json:"description"`
+	Theme       *string `json:"theme"`
 }
 
 // MilestoneView 是一个里程碑的对外视图。/ MilestoneView is a milestone's outward view.
@@ -82,8 +93,8 @@ type ActivityView struct {
 func (s *Store) ListCampaigns(ctx context.Context, limit, offset int) ([]CampaignView, error) {
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT c.id, c.charity, c.goal, c.raised, c.released, c.milestone_count,
-		       COALESCE(c.metadata_hash, ''), c.completed, c.created_block, c.created_tx, c.created_at,
-		       m.title
+		       COALESCE(c.metadata_hash, ''), c.completed, c.confirmed, c.created_block, c.created_tx, c.created_at,
+		       m.title, m.description, m.theme
 		FROM campaigns c
 		LEFT JOIN campaign_metadata m ON m.campaign_id = c.id
 		ORDER BY c.created_block DESC
@@ -98,15 +109,22 @@ func (s *Store) ListCampaigns(ctx context.Context, limit, offset int) ([]Campaig
 	list := []CampaignView{}
 	for rows.Next() {
 		var c CampaignView
-		var title sql.NullString
+		var title, description, theme sql.NullString
 		if err := rows.Scan(
 			&c.ID, &c.Charity, &c.Goal, &c.Raised, &c.Released, &c.MilestoneCount,
-			&c.MetadataHash, &c.Completed, &c.CreatedBlock, &c.CreatedTx, &c.CreatedAt, &title,
+			&c.MetadataHash, &c.Completed, &c.Confirmed, &c.CreatedBlock, &c.CreatedTx, &c.CreatedAt,
+			&title, &description, &theme,
 		); err != nil {
 			return nil, fmt.Errorf("store: 扫描活动失败 / scan campaign: %w", err)
 		}
 		if title.Valid {
 			c.Title = &title.String
+		}
+		if description.Valid {
+			c.Description = &description.String
+		}
+		if theme.Valid {
+			c.Theme = &theme.String
 		}
 		list = append(list, c)
 	}
@@ -118,19 +136,26 @@ func (s *Store) ListCampaigns(ctx context.Context, limit, offset int) ([]Campaig
 func (s *Store) GetCampaign(ctx context.Context, id uint64) (c CampaignView, found bool, err error) {
 	row := s.db.QueryRowContext(ctx, `
 		SELECT c.id, c.charity, c.goal, c.raised, c.released, c.milestone_count,
-		       COALESCE(c.metadata_hash, ''), c.completed, c.created_block, c.created_tx, c.created_at,
-		       m.title
+		       COALESCE(c.metadata_hash, ''), c.completed, c.confirmed, c.created_block, c.created_tx, c.created_at,
+		       m.title, m.description, m.theme
 		FROM campaigns c
 		LEFT JOIN campaign_metadata m ON m.campaign_id = c.id
 		WHERE c.id = ?`, id)
-	var title sql.NullString
+	var title, description, theme sql.NullString
 	switch err = row.Scan(
 		&c.ID, &c.Charity, &c.Goal, &c.Raised, &c.Released, &c.MilestoneCount,
-		&c.MetadataHash, &c.Completed, &c.CreatedBlock, &c.CreatedTx, &c.CreatedAt, &title,
+		&c.MetadataHash, &c.Completed, &c.Confirmed, &c.CreatedBlock, &c.CreatedTx, &c.CreatedAt,
+		&title, &description, &theme,
 	); err {
 	case nil:
 		if title.Valid {
 			c.Title = &title.String
+		}
+		if description.Valid {
+			c.Description = &description.String
+		}
+		if theme.Valid {
+			c.Theme = &theme.String
 		}
 		return c, true, nil
 	case sql.ErrNoRows:
