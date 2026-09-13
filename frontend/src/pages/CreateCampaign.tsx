@@ -108,9 +108,8 @@ export default function CreateCampaign() {
           setMetadataSaveError(err instanceof Error ? err.message : 'Failed to save the campaign details.')
         })
         // It's already in the campaigns list (see createCampaignRecord above)
-        // — go straight to its page instead of making the charity click
-        // through from here.
-        navigate(`/campaigns/${id}`)
+        // — go straight there instead of making the charity click through.
+        navigate('/')
       }
     } catch (err) {
       setStatus('error')
@@ -288,10 +287,9 @@ export default function CreateCampaign() {
               </p>
             )}
 
-            {/* createdId !== null redirects to the campaign page immediately (see
+            {/* createdId !== null redirects to the campaigns list immediately (see
                 handleSubmit) — this only has time to show for the rare case where
-                the id couldn't be parsed from the receipt, so there's nowhere to
-                redirect to. */}
+                the id couldn't be parsed from the receipt. */}
             {status === 'success' && txHash && createdId === null && (
               <p className="mt-3 text-xs text-proven">
                 Campaign created —{' '}
