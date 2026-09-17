@@ -29,6 +29,9 @@ type Config struct {
 	Confirmations   uint64         // 落后链头多少块再处理，规避链重组
 	BatchSize       uint64         // 每次 FilterLogs 最多扫多少个区块
 	APIAddr         string         // REST API 监听地址，如 ":8080"（仅 api 二进制用）
+	DeepSeekAPIKey  string         // DeepSeek API key，为空则 /api/chat 直接 503（仅 api 二进制用）
+	DeepSeekModel   string         // 聊天用的模型名（仅 api 二进制用）
+	UploadsDir      string         // 里程碑凭证文件存放目录（仅 api 二进制用）
 }
 
 // Load 从进程环境（可选先加载 .env 文件）读取并校验配置。
@@ -47,6 +50,12 @@ func Load() (*Config, error) {
 		Confirmations: envUintOr("CONFIRMATIONS", 5),
 		BatchSize:     envUintOr("BATCH_SIZE", 2000),
 		APIAddr:       envOr("API_ADDR", ":8080"),
+
+		// 可选：留空时 /api/chat 直接 503，其它接口不受影响。
+		// Optional: blank just makes /api/chat return 503; nothing else depends on it.
+		DeepSeekAPIKey: envOr("DEEPSEEK_API_KEY", ""),
+		DeepSeekModel:  envOr("DEEPSEEK_MODEL", "deepseek-chat"),
+		UploadsDir:     envOr("UPLOADS_DIR", "./uploads"),
 	}
 
 	// 合约地址：必须是合法 0x 地址，否则直接报错（fail fast）。

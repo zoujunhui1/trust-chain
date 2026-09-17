@@ -1,16 +1,8 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { listActivity, listCampaigns, listCharities } from '../lib/api'
-import type { ActivityEvent, ActivityEventType, Campaign, Charity } from '../lib/api'
-import { campaignTitle, shortAddress, weiToEth } from '../lib/format'
-
-const EVENT_LABEL: Record<ActivityEventType, (a: ActivityEvent) => string> = {
-  CampaignCreated: () => 'Campaign Created',
-  DonationReceived: () => 'Donation Received',
-  MilestoneReleased: (a) => `Milestone ${(a.milestoneIdx ?? 0) + 1} Released`,
-  ReceiptSubmitted: (a) => `Receipt Submitted (M${(a.milestoneIdx ?? 0) + 1})`,
-  CampaignCompleted: () => 'Campaign Completed',
-}
+import type { ActivityEvent, Campaign, Charity } from '../lib/api'
+import { activityEventLabel, campaignTitle, etherscanTxUrl, shortAddress, weiToEth } from '../lib/format'
 
 export default function TransparencyDashboard() {
   const [campaigns, setCampaigns] = useState<Campaign[] | null>(null)
@@ -100,9 +92,18 @@ export default function TransparencyDashboard() {
                         {titleById.get(a.campaignId) ?? `Campaign #${a.campaignId}`}
                       </Link>
                     </td>
-                    <td className="px-5 py-3.5 text-ink">{EVENT_LABEL[a.eventType](a)}</td>
+                    <td className="px-5 py-3.5 text-ink">{activityEventLabel(a)}</td>
                     <td className="px-5 py-3.5 text-ink">{a.amount ? `${weiToEth(a.amount)} ETH` : '—'}</td>
-                    <td className="px-5 py-3.5 text-muted">{shortAddress(a.txHash)}</td>
+                    <td className="px-5 py-3.5">
+                      <a
+                        href={etherscanTxUrl(a.txHash)}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="text-accent underline"
+                      >
+                        {shortAddress(a.txHash)}
+                      </a>
+                    </td>
                     <td className="px-5 py-3.5">
                       {a.eventType === 'ReceiptSubmitted' ? (
                         <span className="rounded-full bg-proven-tint px-2.5 py-1 text-xs font-medium text-proven">

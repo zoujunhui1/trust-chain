@@ -1,5 +1,5 @@
 import { formatEther } from 'ethers'
-import type { Campaign, Milestone } from './api'
+import type { ActivityEvent, ActivityEventType, Campaign, Milestone } from './api'
 
 // wei decimal string -> "1.500" (3dp, matches the Figma mockup's amount style).
 export function weiToEth(wei: string, decimals = 3): string {
@@ -55,4 +55,25 @@ export function milestoneStatusText(milestone: Milestone, idx: number, campaign:
       : 'Unlocks once the funding goal is reached'
   }
   return `Unlocks after Milestone ${idx} is proven`
+}
+
+// txHash -> a real, live Sepolia Etherscan URL — the whole point of
+// TrustChain's transparency pitch is that this isn't a screenshot, it's a
+// link anyone can open and check for themselves.
+export function etherscanTxUrl(txHash: string): string {
+  return `https://sepolia.etherscan.io/tx/${txHash}`
+}
+
+// Shared with TransparencyDashboard's global feed and CampaignDetail's
+// per-campaign timeline, so the two read the same event the same way.
+const ACTIVITY_LABEL: Record<ActivityEventType, (a: ActivityEvent) => string> = {
+  CampaignCreated: () => 'Campaign created',
+  DonationReceived: () => 'Donation received',
+  MilestoneReleased: (a) => `Milestone ${(a.milestoneIdx ?? 0) + 1} released`,
+  ReceiptSubmitted: (a) => `Receipt submitted (Milestone ${(a.milestoneIdx ?? 0) + 1})`,
+  CampaignCompleted: () => 'Campaign completed',
+}
+
+export function activityEventLabel(a: ActivityEvent): string {
+  return ACTIVITY_LABEL[a.eventType](a)
 }

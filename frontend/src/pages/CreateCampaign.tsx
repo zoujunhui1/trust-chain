@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { parseEther } from 'ethers'
 import { useNavigate } from 'react-router-dom'
-import { createCampaignRecord, getCharity, setCampaignMetadata } from '../lib/api'
+import { createCampaignRecord, getCharity, setCampaignMetadata, setMilestoneDescriptions } from '../lib/api'
 import { createCampaign, parseCreatedCampaignId } from '../lib/escrow'
 import { shortAddress } from '../lib/format'
 import { listThemes } from '../lib/theme'
@@ -17,6 +17,9 @@ export default function CreateCampaign() {
   const [description, setDescription] = useState('')
   const [theme, setTheme] = useState('') // a CampaignTheme.key, or '' for "no preference"
   const [milestones, setMilestones] = useState<string[]>([''])
+  // Index-aligned with milestones — descriptions[i] describes milestone i.
+  // Optional, so an empty string is a valid "nothing to say" value.
+  const [milestoneDescriptions, setMilestoneDescriptionsState] = useState<string[]>([''])
   const [status, setStatus] = useState<TxStatus>('idle')
   const [txHash, setTxHash] = useState<string | null>(null)
   const [createdId, setCreatedId] = useState<number | null>(null)
@@ -26,6 +29,7 @@ export default function CreateCampaign() {
   // itself failed to create.
   const [recordSaveError, setRecordSaveError] = useState<string | null>(null)
   const [metadataSaveError, setMetadataSaveError] = useState<string | null>(null)
+  const [milestoneDescSaveError, setMilestoneDescSaveError] = useState<string | null>(null)
 
   useEffect(() => {
     if (!wallet.address) {
@@ -55,12 +59,18 @@ export default function CreateCampaign() {
     setMilestones((prev) => prev.map((m, idx) => (idx === i ? value : m)))
   }
 
+  function updateMilestoneDescription(i: number, value: string) {
+    setMilestoneDescriptionsState((prev) => prev.map((d, idx) => (idx === i ? value : d)))
+  }
+
   function addMilestone() {
     setMilestones((prev) => [...prev, ''])
+    setMilestoneDescriptionsState((prev) => [...prev, ''])
   }
 
   function removeMilestone(i: number) {
     setMilestones((prev) => prev.filter((_, idx) => idx !== i))
+    setMilestoneDescriptionsState((prev) => prev.filter((_, idx) => idx !== i))
   }
 
   async function handleSubmit() {
@@ -70,6 +80,7 @@ export default function CreateCampaign() {
     setCreatedId(null)
     setRecordSaveError(null)
     setMetadataSaveError(null)
+    setMilestoneDescSaveError(null)
     try {
       const charity = wallet.address!
       const signer = await wallet.getSigner()
@@ -82,7 +93,9 @@ export default function CreateCampaign() {
       const savedTitle = title.trim()
       const savedDescription = description.trim()
       const savedTheme = theme
+      const savedMilestoneDescriptions = milestoneDescriptions
       setMilestones([''])
+      setMilestoneDescriptionsState([''])
       setTitle('')
       setDescription('')
       setTheme('')
@@ -106,6 +119,9 @@ export default function CreateCampaign() {
           theme: savedTheme || undefined,
         }).catch((err) => {
           setMetadataSaveError(err instanceof Error ? err.message : 'Failed to save the campaign details.')
+        })
+        setMilestoneDescriptions(id, savedMilestoneDescriptions).catch((err) => {
+          setMilestoneDescSaveError(err instanceof Error ? err.message : 'Failed to save the milestone descriptions.')
         })
         // It's already in the campaigns list (see createCampaignRecord above)
         // — go straight there instead of making the charity click through.
@@ -225,30 +241,41 @@ export default function CreateCampaign() {
             <p className="mt-6 text-sm font-medium text-ink">Milestones</p>
             <div className="mt-3 space-y-3">
               {milestones.map((m, i) => (
-                <div key={i} className="flex items-center gap-2">
-                  <span className="w-6 text-sm text-muted">{i + 1}.</span>
-                  <div className="flex flex-1 items-center rounded-lg border border-border px-3 py-2 transition-colors focus-within:border-accent">
-                    <input
-                      type="number"
-                      min="0"
-                      step="0.001"
-                      placeholder="0.00"
-                      value={m}
-                      onChange={(e) => updateMilestone(i, e.target.value)}
-                      disabled={status === 'pending'}
-                      className="w-full text-ink outline-none"
-                    />
-                    <span className="text-sm text-muted">ETH</span>
+                <div key={i} className="rounded-lg border border-border p-2.5">
+                  <div className="flex items-center gap-2">
+                    <span className="w-6 text-sm text-muted">{i + 1}.</span>
+                    <div className="flex flex-1 items-center rounded-lg border border-border px-3 py-2 transition-colors focus-within:border-accent">
+                      <input
+                        type="number"
+                        min="0"
+                        step="0.001"
+                        placeholder="0.00"
+                        value={m}
+                        onChange={(e) => updateMilestone(i, e.target.value)}
+                        disabled={status === 'pending'}
+                        className="w-full text-ink outline-none"
+                      />
+                      <span className="text-sm text-muted">ETH</span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => removeMilestone(i)}
+                      disabled={milestones.length === 1 || status === 'pending'}
+                      className="px-2 text-sm text-muted hover:text-red-600 disabled:opacity-30"
+                      aria-label="Remove milestone"
+                    >
+                      ✕
+                    </button>
                   </div>
-                  <button
-                    type="button"
-                    onClick={() => removeMilestone(i)}
-                    disabled={milestones.length === 1 || status === 'pending'}
-                    className="px-2 text-sm text-muted hover:text-red-600 disabled:opacity-30"
-                    aria-label="Remove milestone"
-                  >
-                    ✕
-                  </button>
+                  <input
+                    type="text"
+                    placeholder="What will this milestone accomplish? (optional)"
+                    value={milestoneDescriptions[i] ?? ''}
+                    onChange={(e) => updateMilestoneDescription(i, e.target.value)}
+                    disabled={status === 'pending'}
+                    maxLength={2000}
+                    className="mt-2 ml-8 w-[calc(100%-2rem)] rounded-lg border border-border px-3 py-1.5 text-xs text-ink outline-none transition-colors focus:border-accent"
+                  />
                 </div>
               ))}
             </div>
@@ -313,6 +340,11 @@ export default function CreateCampaign() {
             {metadataSaveError && (
               <p className="mt-2 text-xs text-red-600">
                 Campaign created, but saving its details failed: {metadataSaveError}
+              </p>
+            )}
+            {milestoneDescSaveError && (
+              <p className="mt-2 text-xs text-red-600">
+                Campaign created, but saving milestone descriptions failed: {milestoneDescSaveError}
               </p>
             )}
           </div>

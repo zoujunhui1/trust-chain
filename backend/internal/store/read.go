@@ -4,8 +4,8 @@
 // 与写侧的分工 / split from the write side:
 //   - 写方法（store.go）只被索引器调用，把链上事件落库。
 //   - 读方法（本文件）只被 API 调用，把库里的数据查出来给前端。
-//   这正是「读写分离」在代码层面的映射。
-//   This mirrors the read/write split at the code level.
+//     这正是「读写分离」在代码层面的映射。
+//     This mirrors the read/write split at the code level.
 package store
 
 import (
@@ -55,6 +55,29 @@ type MilestoneView struct {
 	Amount      string  `json:"amount"` // wei
 	State       uint8   `json:"state"`  // 0=Locked 1=Released 2=Proven
 	ReceiptHash *string `json:"receiptHash"`
+	// 以下来自 milestone_receipts（LEFT JOIN），没上传过就全是 nil——链上
+	// receiptHash 只是指纹，这些字段才是真正能打开看的文件。见
+	// store/milestone_receipts.go。文件本体走
+	// GET /api/campaigns/{id}/milestones/{idx}/receipt/file。
+	// From milestone_receipts (LEFT JOIN); all nil if nothing was ever
+	// uploaded. ReceiptHash above is only a fingerprint — these are the
+	// actual, openable file's metadata. See store/milestone_receipts.go.
+	// The file itself is served at
+	// GET /api/campaigns/{id}/milestones/{idx}/receipt/file.
+	ReceiptFileName    *string    `json:"receiptFileName"`
+	ReceiptContentType *string    `json:"receiptContentType"`
+	ReceiptFileSize    *int64     `json:"receiptFileSize"`
+	ReceiptSHA256      *string    `json:"receiptSha256"`
+	ReceiptNote        *string    `json:"receiptNote"`
+	ReceiptUploadedAt  *time.Time `json:"receiptUploadedAt"`
+	// Description 来自 milestone_metadata（LEFT JOIN）——建活动时可选填的
+	// "这个里程碑打算做什么"，跟上面举证时才有的 ReceiptNote（"实际花在哪了"）
+	// 是两回事。见 store/milestone_metadata.go。
+	// From milestone_metadata (LEFT JOIN) — the optional "what this milestone
+	// will accomplish" entered at creation, distinct from ReceiptNote above
+	// ("what was actually spent"), which only exists after proving. See
+	// store/milestone_metadata.go.
+	Description *string `json:"description"`
 }
 
 // DonationView 是一笔捐款的对外视图。/ DonationView is a single donation's outward view.
@@ -169,9 +192,14 @@ func (s *Store) GetCampaign(ctx context.Context, id uint64) (c CampaignView, fou
 // ListMilestones returns a campaign's milestones ordered by index.
 func (s *Store) ListMilestones(ctx context.Context, campaignID uint64) ([]MilestoneView, error) {
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT idx, amount, state, receipt_hash
-		FROM milestones WHERE campaign_id = ?
-		ORDER BY idx ASC`, campaignID)
+		SELECT m.idx, m.amount, m.state, m.receipt_hash,
+		       r.file_name, r.content_type, r.file_size, r.sha256, r.note, r.uploaded_at,
+		       md.description
+		FROM milestones m
+		LEFT JOIN milestone_receipts r ON r.campaign_id = m.campaign_id AND r.milestone_idx = m.idx
+		LEFT JOIN milestone_metadata md ON md.campaign_id = m.campaign_id AND md.milestone_idx = m.idx
+		WHERE m.campaign_id = ?
+		ORDER BY m.idx ASC`, campaignID)
 	if err != nil {
 		return nil, fmt.Errorf("store: 查里程碑失败 / list milestones: %w", err)
 	}
@@ -180,14 +208,34 @@ func (s *Store) ListMilestones(ctx context.Context, campaignID uint64) ([]Milest
 	list := []MilestoneView{}
 	for rows.Next() {
 		var m MilestoneView
-		// receipt_hash 可能为 NULL，用 sql.NullString 接。
-		// receipt_hash may be NULL; scan into sql.NullString.
-		var receipt sql.NullString
-		if err := rows.Scan(&m.Idx, &m.Amount, &m.State, &receipt); err != nil {
+		var receipt, fileName, contentType, sha256 sql.NullString
+		var note, description sql.NullString
+		var fileSize sql.NullInt64
+		var uploadedAt sql.NullTime
+		if err := rows.Scan(
+			&m.Idx, &m.Amount, &m.State, &receipt,
+			&fileName, &contentType, &fileSize, &sha256, &note, &uploadedAt,
+			&description,
+		); err != nil {
 			return nil, fmt.Errorf("store: 扫描里程碑失败 / scan milestone: %w", err)
+		}
+		if description.Valid {
+			m.Description = &description.String
 		}
 		if receipt.Valid {
 			m.ReceiptHash = &receipt.String
+		}
+		if fileName.Valid {
+			m.ReceiptFileName = &fileName.String
+			m.ReceiptContentType = &contentType.String
+			m.ReceiptFileSize = &fileSize.Int64
+			m.ReceiptSHA256 = &sha256.String
+			if note.Valid {
+				m.ReceiptNote = &note.String
+			}
+			if uploadedAt.Valid {
+				m.ReceiptUploadedAt = &uploadedAt.Time
+			}
 		}
 		list = append(list, m)
 	}
@@ -278,6 +326,45 @@ func (s *Store) ListActivity(ctx context.Context, limit, offset int) ([]Activity
 			&a.ID, &a.CampaignID, &a.EventType, &amount, &idx, &a.BlockNumber, &a.TxHash, &a.LogIndex, &a.CreatedAt,
 		); err != nil {
 			return nil, fmt.Errorf("store: 扫描活动流水失败 / scan activity: %w", err)
+		}
+		if amount.Valid {
+			a.Amount = &amount.String
+		}
+		if idx.Valid {
+			v := uint32(idx.Int64)
+			a.MilestoneIdx = &v
+		}
+		list = append(list, a)
+	}
+	return list, rows.Err()
+}
+
+// ListActivityByCampaign 返回单个活动的链上活动流水，按发生顺序正序（从
+// 创建到现在），配合活动详情页做一条真实交易时间线。
+// ListActivityByCampaign returns one campaign's on-chain activity feed in
+// chronological order (oldest first), for the campaign detail page's
+// real-transaction timeline.
+func (s *Store) ListActivityByCampaign(ctx context.Context, campaignID uint64, limit, offset int) ([]ActivityView, error) {
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT id, campaign_id, event_type, amount, milestone_idx, block_number, tx_hash, log_index, created_at
+		FROM activity_events
+		WHERE campaign_id = ?
+		ORDER BY block_number ASC, log_index ASC
+		LIMIT ? OFFSET ?`, campaignID, limit, offset)
+	if err != nil {
+		return nil, fmt.Errorf("store: 查活动流水失败 / list campaign activity: %w", err)
+	}
+	defer rows.Close()
+
+	list := []ActivityView{}
+	for rows.Next() {
+		var a ActivityView
+		var amount sql.NullString
+		var idx sql.NullInt64
+		if err := rows.Scan(
+			&a.ID, &a.CampaignID, &a.EventType, &amount, &idx, &a.BlockNumber, &a.TxHash, &a.LogIndex, &a.CreatedAt,
+		); err != nil {
+			return nil, fmt.Errorf("store: 扫描活动流水失败 / scan campaign activity: %w", err)
 		}
 		if amount.Valid {
 			a.Amount = &amount.String

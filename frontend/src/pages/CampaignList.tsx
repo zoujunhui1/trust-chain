@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { Link } from 'react-router-dom'
 import CampaignCard from '../components/CampaignCard'
 import { getCampaign, getCharity, listCampaigns } from '../lib/api'
 import type { Campaign, Milestone } from '../lib/api'
@@ -54,6 +55,45 @@ export default function CampaignList() {
         Support verified charities — funds are only released once each milestone is proven on-chain.
       </p>
 
+      <section className="mt-10 grid grid-cols-1 gap-6 rounded-xl border border-border bg-white p-6 shadow-sm sm:p-8 lg:grid-cols-[1.15fr_1fr]">
+        <div>
+          <h2 className="text-xs font-semibold uppercase tracking-wide text-muted">How it works</h2>
+          <ol className="mt-4 space-y-4">
+            <Step
+              n={1}
+              title="Connect your wallet"
+              text="Click Connect Wallet and approve in MetaMask — no account or signup needed."
+            />
+            <Step
+              n={2}
+              title="Donate, or create a campaign"
+              text="Donors send ETH to any campaign. A registry-verified charity can create one and split its goal into milestones."
+            />
+            <Step
+              n={3}
+              title="Funds release milestone by milestone"
+              text="A charity only receives each milestone's ETH after submitting proof on-chain — never the full amount up front."
+            />
+          </ol>
+        </div>
+
+        <div
+          className="rounded-lg p-5"
+          style={{ background: 'linear-gradient(135deg, rgba(30,58,95,0.06), rgba(124,58,237,0.06))' }}
+        >
+          <h2 className="text-xs font-semibold uppercase tracking-wide text-muted">Why TrustChain</h2>
+          <p className="mt-3 text-sm text-ink">
+            Your donation never sits in a charity's bank account. It's locked in a smart contract and
+            released one milestone at a time, only after the charity proves it on-chain — every step
+            is a public transaction you can check yourself on the{' '}
+            <Link to="/transparency" className="font-medium text-accent underline">
+              Transparency Dashboard
+            </Link>{' '}
+            or Sepolia Etherscan.
+          </p>
+        </div>
+      </section>
+
       {error && (
         <p className="mt-8 text-sm text-red-600">Couldn't load campaigns: {error}</p>
       )}
@@ -79,5 +119,19 @@ export default function CampaignList() {
         </div>
       )}
     </div>
+  )
+}
+
+function Step({ n, title, text }: { n: number; title: string; text: string }) {
+  return (
+    <li className="flex gap-3">
+      <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-accent-tint text-xs font-semibold text-accent">
+        {n}
+      </span>
+      <div>
+        <p className="text-sm font-medium text-ink">{title}</p>
+        <p className="mt-0.5 text-sm text-muted">{text}</p>
+      </div>
+    </li>
   )
 }

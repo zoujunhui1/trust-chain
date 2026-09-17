@@ -167,3 +167,60 @@ CREATE TABLE IF NOT EXISTS campaign_metadata (
   created_at   TIMESTAMP       NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '入库时间 / stored at',
   PRIMARY KEY (campaign_id)
 ) ENGINE=InnoDB COMMENT='活动标题/详情/主题(API 直写，非索引器) / campaign title, description, theme (API-written, not indexer)';
+
+-- 里程碑计划说明：跟 campaign_metadata 同一类——合约只存金额，链上事件从没
+-- 带过"这笔钱打算做什么"。建活动时可选填，跟 milestone_receipts 的 note
+-- 字段是一对"计划 vs 实际"：这张表是创建活动时写的"打算做什么"，
+-- milestone_receipts.note 是举证时写的"实际花在哪了"，故意分成两张表，
+-- 别混在一起。同样不建外键，读的时候 LEFT JOIN。
+-- Per-milestone plan description: the same kind of gap as campaign_metadata
+-- — the contract only stores an amount, on-chain events never carried "what
+-- this money is for". Optional, filled in at campaign creation. Pairs with
+-- milestone_receipts.note as "planned vs actual": this table is the plan
+-- written at creation time, milestone_receipts.note is what was actually
+-- spent, written at receipt time — kept as two tables on purpose, not merged.
+-- Same no-FK, LEFT JOIN-on-read pattern as everything else here.
+CREATE TABLE IF NOT EXISTS milestone_metadata (
+  campaign_id    BIGINT UNSIGNED NOT NULL COMMENT '所属活动 id / owning campaign id',
+  milestone_idx  INT UNSIGNED    NOT NULL COMMENT '里程碑序号 / milestone index',
+  description    TEXT            NOT NULL COMMENT '这个里程碑打算做什么(可选，前端建活动时填) / what this milestone will accomplish (optional, entered at creation)',
+  created_at     TIMESTAMP       NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '入库时间 / stored at',
+  PRIMARY KEY (campaign_id, milestone_idx)
+) ENGINE=InnoDB COMMENT='里程碑计划说明(API 直写，非索引器) / milestone plan descriptions (API-written, not indexer)';
+
+-- 里程碑支出凭证文件：milestones.receipt_hash 只是链上那个 bytes32 哈希，
+-- 从来不是真正的文件——文件本体从没地方存。这张表补上"真正能打开看的凭证"，
+-- 存的是本地磁盘上的文件路径，不是文件内容本身（见 config.UploadsDir /
+-- api/receipt_upload.go）。
+-- sha256 是后端收到文件后自己算的（不信任前端声称的哈希），前端展示时会
+-- 拿它和 milestones.receipt_hash（链上值，经 indexer 同步）比对："两个哈希
+-- 一致" 才是这份文件真的对应链上那次举证的证明，不是靠后端说了算。
+-- 同样不建外键：里程碑行在 CampaignCreated 时就建好了，理论上不会有
+-- campaign_metadata 那种"活动还没同步"的时间差，但保持和其它链下表一致的
+-- 写法（LEFT JOIN 读取），少一个特例要记。
+-- Milestone spending-receipt files: milestones.receipt_hash is only the
+-- on-chain bytes32 hash — never an actual file, because there was never
+-- anywhere to put one. This table adds the real, openable document, storing
+-- a path on local disk rather than the file's bytes (see config.UploadsDir /
+-- api/receipt_upload.go).
+-- sha256 is computed by the backend itself from the received bytes (never
+-- trusting a client-declared hash) — the frontend compares it against
+-- milestones.receipt_hash (the on-chain value, synced by the indexer) so
+-- "the two hashes match" is a fact anyone can check, not something the
+-- backend merely asserts.
+-- No FK either: milestone rows exist from CampaignCreated onward, so there's
+-- no campaign_metadata-style race in practice, but this keeps the same
+-- LEFT JOIN read pattern as every other off-chain table — one fewer special
+-- case to remember.
+CREATE TABLE IF NOT EXISTS milestone_receipts (
+  campaign_id    BIGINT UNSIGNED NOT NULL COMMENT '所属活动 id / owning campaign id',
+  milestone_idx  INT UNSIGNED    NOT NULL COMMENT '里程碑序号 / milestone index',
+  file_path      VARCHAR(255)    NOT NULL COMMENT '磁盘相对路径(uploads 目录下) / path under the uploads dir',
+  file_name      VARCHAR(255)    NOT NULL COMMENT '原始文件名(展示用) / original filename, for display',
+  content_type   VARCHAR(100)    NOT NULL COMMENT 'MIME 类型 / MIME type',
+  file_size      BIGINT UNSIGNED NOT NULL COMMENT '文件大小(字节) / file size in bytes',
+  sha256         CHAR(64)        NOT NULL COMMENT '后端计算的文件哈希(十六进制，无0x) / backend-computed file hash, hex, no 0x prefix',
+  note           TEXT            NULL COMMENT '机构填写的支出说明(可选) / charity-written expense note (optional)',
+  uploaded_at    TIMESTAMP       NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '上传时间 / uploaded at',
+  PRIMARY KEY (campaign_id, milestone_idx)
+) ENGINE=InnoDB COMMENT='里程碑支出凭证文件(API 直写，非索引器) / milestone spending-receipt files (API-written, not indexer)';

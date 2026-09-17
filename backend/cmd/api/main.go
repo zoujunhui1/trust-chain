@@ -3,7 +3,8 @@
 // start the server, and shut down gracefully on Ctrl+C / SIGTERM.
 //
 // 它和 cmd/indexer 是两个独立进程 / two separate processes:
-//   indexer 只写库（链→MySQL），api 只读库（MySQL→前端），互不阻塞。
+//
+//	indexer 只写库（链→MySQL），api 只读库（MySQL→前端），互不阻塞。
 package main
 
 import (
@@ -49,7 +50,7 @@ func run() error {
 	// Configure timeouts explicitly; the zero-value server has none, which is unsafe.
 	srv := &http.Server{
 		Addr:              cfg.APIAddr,
-		Handler:           api.New(st).Handler(),
+		Handler:           api.New(st, cfg.DeepSeekAPIKey, cfg.DeepSeekModel, cfg.UploadsDir).Handler(),
 		ReadHeaderTimeout: 5 * time.Second,
 		ReadTimeout:       10 * time.Second,
 		WriteTimeout:      15 * time.Second,

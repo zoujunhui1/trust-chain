@@ -36,7 +36,20 @@ export interface Milestone {
   idx: number
   amount: string // wei
   state: MilestoneState
-  receiptHash: string | null
+  receiptHash: string | null // on-chain fingerprint only — see the fields below for the actual file
+  // The uploaded expense document's metadata (milestone_receipts table),
+  // null until the charity uploads one via uploadMilestoneReceipt(). The
+  // file itself is at milestoneReceiptFileUrl(campaignId, idx).
+  receiptFileName: string | null
+  receiptContentType: string | null
+  receiptFileSize: number | null
+  receiptSha256: string | null // hex, no 0x — compare against receiptHash (0x + this) to verify
+  receiptNote: string | null
+  receiptUploadedAt: string | null
+  // Optional "what this milestone will accomplish", entered at creation —
+  // distinct from receiptNote ("what was actually spent"), set at receipt
+  // time. See lib/api's setMilestoneDescriptions().
+  description: string | null
 }
 
 export interface Donation {
@@ -131,6 +144,12 @@ export function listActivity(): Promise<ActivityEvent[]> {
   return getJSON('/api/activity')
 }
 
+// One campaign's on-chain activity, oldest first — a real transaction
+// timeline for the campaign detail page (see backend's ListActivityByCampaign).
+export function listCampaignActivity(id: number | string): Promise<ActivityEvent[]> {
+  return getJSON(`/api/campaigns/${id}/activity`)
+}
+
 // Records that a wallet connected, with the role the frontend computed for
 // it (lib/role.ts). Not a source of truth for permissions — just a "who
 // connected, as what, when" log. Callers should fire-and-forget this; a
@@ -148,6 +167,14 @@ export function setCampaignMetadata(
   metadata: { title: string; description?: string; theme?: string },
 ): Promise<void> {
   return postJSON(`/api/campaigns/${id}/metadata`, metadata)
+}
+
+// Stores each milestone's optional plan description, index-aligned with
+// milestone idx (descriptions[i] describes milestone i; blank entries are
+// fine and just don't get stored). Call alongside setCampaignMetadata, right
+// after the create-campaign tx confirms.
+export function setMilestoneDescriptions(id: number, descriptions: string[]): Promise<void> {
+  return postJSON(`/api/campaigns/${id}/milestones/metadata`, { descriptions })
 }
 
 // Optimistically records a campaign the moment its create-campaign tx
@@ -169,4 +196,58 @@ export function createCampaignRecord(params: {
     createdBlock: params.createdBlock,
     createdTx: params.createdTx,
   })
+}
+
+export interface ChatMessage {
+  role: 'user' | 'assistant'
+  content: string
+}
+
+// Sends one turn to the backend's DeepSeek-API proxy (backend/internal/api/chat.go
+// — the API key lives server-side, never in this file). `history` is the prior
+// turns, oldest first; the caller owns the running conversation and just appends
+// the new reply once it comes back.
+export async function sendChatMessage(message: string, history: ChatMessage[]): Promise<string> {
+  const res = await fetch(`${BASE_URL}/api/chat`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ message, history }),
+  })
+  if (!res.ok) {
+    const errBody = await res.json().catch(() => null)
+    throw new ApiError(res.status, errBody?.error ?? `${res.status} ${res.statusText}`)
+  }
+  const body = (await res.json()) as { reply: string }
+  return body.reply
+}
+
+// URL for a milestone's uploaded receipt file (backend/internal/api/receipt_upload.go).
+// Safe to use directly as an <img src> or <a href> — 404s if nothing was uploaded yet.
+export function milestoneReceiptFileUrl(campaignId: number | string, idx: number): string {
+  return `${BASE_URL}/api/campaigns/${campaignId}/milestones/${idx}/receipt/file`
+}
+
+// Uploads the actual expense document for a milestone, after its
+// submitReceipt transaction has already confirmed on-chain (see lib/hash.ts
+// and lib/escrow.ts's submitReceipt — the hash committed there and the hash
+// this computes server-side from the same bytes should match). Not JSON, so
+// this doesn't go through postJSON.
+export async function uploadMilestoneReceipt(
+  campaignId: number,
+  idx: number,
+  file: File,
+  note?: string,
+): Promise<{ sha256: string; fileName: string; contentType: string; fileSize: number }> {
+  const form = new FormData()
+  form.append('file', file)
+  if (note) form.append('note', note)
+  const res = await fetch(`${BASE_URL}/api/campaigns/${campaignId}/milestones/${idx}/receipt`, {
+    method: 'POST',
+    body: form,
+  })
+  if (!res.ok) {
+    const errBody = await res.json().catch(() => null)
+    throw new ApiError(res.status, errBody?.error ?? `${res.status} ${res.statusText}`)
+  }
+  return res.json()
 }

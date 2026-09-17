@@ -16,6 +16,10 @@ docs/
 *.key
 keystore/
 
+# 里程碑凭证上传文件（本地磁盘，不进仓库；见 backend/internal/store/milestone_receipts.go）
+# Uploaded milestone receipt files (local disk, not committed)
+/backend/uploads/
+
 # macOS
 .DS_Store
 

@@ -4,6 +4,7 @@ import CampaignDetail from './pages/CampaignDetail'
 import TransparencyDashboard from './pages/TransparencyDashboard'
 import CreateCampaign from './pages/CreateCampaign'
 import AdminCharities from './pages/AdminCharities'
+import ChatWidget from './components/ChatWidget'
 import WalletButton from './components/WalletButton'
 import { WalletProvider } from './lib/wallet'
 import { useRole } from './lib/role'
@@ -81,6 +82,8 @@ function AppShell() {
         <Route path="/create" element={<CreateCampaign />} />
         <Route path="/admin/charities" element={<AdminCharities />} />
       </Routes>
+
+      <ChatWidget />
     </div>
   )
 }

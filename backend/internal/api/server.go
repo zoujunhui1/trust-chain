@@ -3,35 +3,59 @@
 // endpoints for the frontend.
 //
 // 基本只读，三个例外 / mostly read-only, three exceptions:
-//   所有链上状态的写（认证机构、建活动、捐款、放款）都由前端通过 MetaMask
-//   直接发交易上链，再由索引器同步回库，这条边界没变。三个例外分两类：
-//     - POST /api/users/connect：记录"谁连过/什么角色/何时"，链上事件本来
-//       就不携带这个，索引器管不到。见 store/users.go。
-//     - POST /api/campaigns/{id}/metadata：活动的标题/详情/主题，同样是链上
-//       事件从不携带的数据（合约的 metadataHash 只是哈希，不是可解析指针）。
-//       见 store/campaign_metadata.go。
-//     - POST /api/campaigns：**这个不太一样**——它写的是本该由索引器写的
-//       同一张 campaigns 表，只是抢在索引器追上之前，把前端已经从自己发出
-//       的交易里拿到的数据先乐观地存一份，让活动创建后立刻能在列表里看到，
-//       不用等 CONFIRMATIONS 个块+下一次轮询（1~2 分钟）。索引器真正处理到
-//       这个事件后会覆盖这行数据并标记为 confirmed，见 store.InsertCampaign
-//       对"confirmed"的说明。
-//   All on-chain-state writes still happen on-chain via MetaMask, synced back
-//   by the indexer — that boundary is unchanged. The three exceptions split
-//   into two kinds:
-//     - POST /api/users/connect: records who connected, as what role, and
-//       when — data on-chain events never carried. See store/users.go.
-//     - POST /api/campaigns/{id}/metadata: a campaign's title/description/
-//       theme, also never carried on-chain (metadataHash is just a hash, not
-//       a resolvable pointer). See store/campaign_metadata.go.
-//     - POST /api/campaigns: **different from the other two** — it writes
-//       the very same campaigns table the indexer owns, just optimistically,
-//       ahead of the indexer catching up, using data the frontend already
-//       has from the transaction it just sent — so a new campaign shows up
-//       in the list immediately instead of after CONFIRMATIONS blocks + the
-//       next poll (1-2 minutes). Once the indexer processes the real event
-//       it overwrites this row and marks it confirmed — see
-//       store.InsertCampaign's comment on "confirmed".
+//
+//	所有链上状态的写（认证机构、建活动、捐款、放款）都由前端通过 MetaMask
+//	直接发交易上链，再由索引器同步回库，这条边界没变。三个例外分两类：
+//	  - POST /api/users/connect：记录"谁连过/什么角色/何时"，链上事件本来
+//	    就不携带这个，索引器管不到。见 store/users.go。
+//	  - POST /api/campaigns/{id}/metadata：活动的标题/详情/主题，同样是链上
+//	    事件从不携带的数据（合约的 metadataHash 只是哈希，不是可解析指针）。
+//	    见 store/campaign_metadata.go。同一类还有
+//	    POST /api/campaigns/{id}/milestones/metadata（每个里程碑的计划说明），
+//	    见 store/milestone_metadata.go。
+//	  - POST /api/campaigns：**这个不太一样**——它写的是本该由索引器写的
+//	    同一张 campaigns 表，只是抢在索引器追上之前，把前端已经从自己发出
+//	    的交易里拿到的数据先乐观地存一份，让活动创建后立刻能在列表里看到，
+//	    不用等 CONFIRMATIONS 个块+下一次轮询（1~2 分钟）。索引器真正处理到
+//	    这个事件后会覆盖这行数据并标记为 confirmed，见 store.InsertCampaign
+//	    对"confirmed"的说明。
+//	All on-chain-state writes still happen on-chain via MetaMask, synced back
+//	by the indexer — that boundary is unchanged. The three exceptions split
+//	into two kinds:
+//	  - POST /api/users/connect: records who connected, as what role, and
+//	    when — data on-chain events never carried. See store/users.go.
+//	  - POST /api/campaigns/{id}/metadata: a campaign's title/description/
+//	    theme, also never carried on-chain (metadataHash is just a hash, not
+//	    a resolvable pointer). See store/campaign_metadata.go. The same kind:
+//	    POST /api/campaigns/{id}/milestones/metadata (each milestone's plan
+//	    description), see store/milestone_metadata.go.
+//	  - POST /api/campaigns: **different from the other two** — it writes
+//	    the very same campaigns table the indexer owns, just optimistically,
+//	    ahead of the indexer catching up, using data the frontend already
+//	    has from the transaction it just sent — so a new campaign shows up
+//	    in the list immediately instead of after CONFIRMATIONS blocks + the
+//	    next poll (1-2 minutes). Once the indexer processes the real event
+//	    it overwrites this row and marks it confirmed — see
+//	    store.InsertCampaign's comment on "confirmed".
+//
+// 还有第四个例外，性质又不一样：
+//   - POST /api/chat：不碰数据库，只是把请求转发给 DeepSeek API（key 只能
+//     放后端，不能进前端代码），给首页的聊天助手用。见 chat.go。
+//
+// One more exception, of a different kind again:
+//   - POST /api/chat: touches no database at all — it just proxies a
+//     request to the DeepSeek API (the key must live server-side, never in
+//     frontend code) for the homepage chat assistant. See chat.go.
+//
+// 第五个例外，写的是本地磁盘而不是数据库：
+//   - POST /api/campaigns/{id}/milestones/{idx}/receipt：机构上传里程碑的
+//     支出凭证文件（链上 receiptHash 只是个哈希，从没存过真正的文件）。
+//     见 receipt_upload.go。
+//
+// A fifth exception, writing local disk instead of the database:
+//   - POST /api/campaigns/{id}/milestones/{idx}/receipt: the charity uploads
+//     the actual spending-receipt document (the on-chain receiptHash was
+//     always just a hash, never the file). See receipt_upload.go.
 package api
 
 import (
@@ -52,10 +76,30 @@ import (
 // Server holds the store and assembles the handlers into one http.Handler.
 type Server struct {
 	store *store.Store
+
+	// 聊天助手用的配置，见 chat.go。deepSeekAPIKey 为空时 /api/chat 直接 503。
+	// Chat assistant config, see chat.go. Blank deepSeekAPIKey => /api/chat returns 503.
+	deepSeekAPIKey string
+	deepSeekModel  string
+	chatLimiter    *chatRateLimiter
+
+	// 里程碑凭证文件的存放目录，见 receipt_upload.go。
+	// Directory milestone receipt files are stored under. See receipt_upload.go.
+	uploadsDir string
 }
 
-// New 构造 Server。/ New builds a Server.
-func New(st *store.Store) *Server { return &Server{store: st} }
+// New 构造 Server。deepSeekAPIKey 留空则聊天助手功能关闭（其它接口不受影响）。
+// New builds a Server. A blank deepSeekAPIKey disables the chat assistant
+// without affecting any other endpoint.
+func New(st *store.Store, deepSeekAPIKey, deepSeekModel, uploadsDir string) *Server {
+	return &Server{
+		store:          st,
+		deepSeekAPIKey: deepSeekAPIKey,
+		deepSeekModel:  deepSeekModel,
+		uploadsDir:     uploadsDir,
+		chatLimiter:    newChatRateLimiter(),
+	}
+}
 
 // Handler 注册所有路由并返回带中间件的 http.Handler。
 // Handler registers all routes and returns the http.Handler with middleware.
@@ -68,12 +112,17 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/campaigns", s.handleListCampaigns)
 	mux.HandleFunc("GET /api/campaigns/{id}", s.handleGetCampaign)
 	mux.HandleFunc("GET /api/campaigns/{id}/donations", s.handleListDonations)
+	mux.HandleFunc("GET /api/campaigns/{id}/activity", s.handleListCampaignActivity)
 	mux.HandleFunc("GET /api/charities", s.handleListCharities)
 	mux.HandleFunc("GET /api/charities/{address}", s.handleGetCharity)
 	mux.HandleFunc("GET /api/activity", s.handleListActivity)
 	mux.HandleFunc("POST /api/users/connect", s.handleConnectUser)
 	mux.HandleFunc("POST /api/campaigns", s.handleCreateCampaign)
 	mux.HandleFunc("POST /api/campaigns/{id}/metadata", s.handleSetCampaignMetadata)
+	mux.HandleFunc("POST /api/campaigns/{id}/milestones/metadata", s.handleSetMilestoneDescriptions)
+	mux.HandleFunc("POST /api/chat", s.handleChat)
+	mux.HandleFunc("POST /api/campaigns/{id}/milestones/{idx}/receipt", s.handleUploadMilestoneReceipt)
+	mux.HandleFunc("GET /api/campaigns/{id}/milestones/{idx}/receipt/file", s.handleGetMilestoneReceiptFile)
 
 	// 用 CORS 中间件包一层，允许浏览器前端跨域访问。
 	// Wrap with CORS so the browser frontend can call across origins.
@@ -133,6 +182,24 @@ func (s *Server) handleListDonations(w http.ResponseWriter, r *http.Request) {
 	}
 	limit, offset := parsePaging(r)
 	list, err := s.store.ListDonations(r.Context(), id, limit, offset)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "查询失败 / query failed")
+		return
+	}
+	writeJSON(w, http.StatusOK, list)
+}
+
+// handleListCampaignActivity: GET /api/campaigns/{id}/activity?limit=&offset=
+// —— 单个活动的链上活动流水，按发生顺序正序，给活动详情页做真实交易时间线用。
+// The on-chain activity feed for one campaign, oldest first — powers the
+// real-transaction timeline on the campaign detail page.
+func (s *Server) handleListCampaignActivity(w http.ResponseWriter, r *http.Request) {
+	id, ok := parseID(w, r)
+	if !ok {
+		return
+	}
+	limit, offset := parsePaging(r)
+	list, err := s.store.ListActivityByCampaign(r.Context(), id, limit, offset)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "查询失败 / query failed")
 		return
@@ -228,7 +295,7 @@ func (s *Server) handleConnectUser(w http.ResponseWriter, r *http.Request) {
 type setCampaignMetadataRequest struct {
 	Title       string  `json:"title"`
 	Description *string `json:"description"` // optional
-	Theme       *string `json:"theme"`        // optional — a key from frontend/src/lib/theme.ts
+	Theme       *string `json:"theme"`       // optional — a key from frontend/src/lib/theme.ts
 }
 
 const (
@@ -289,6 +356,40 @@ func (s *Server) handleSetCampaignMetadata(w http.ResponseWriter, r *http.Reques
 	}
 
 	if err := s.store.SetCampaignMetadata(r.Context(), id, title, req.Description, req.Theme); err != nil {
+		writeError(w, http.StatusInternalServerError, "写入失败 / write failed")
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// setMilestoneDescriptionsRequest is the body of POST /api/campaigns/{id}/milestones/metadata.
+type setMilestoneDescriptionsRequest struct {
+	Descriptions []string `json:"descriptions"` // index-aligned with milestone idx; blank entries are fine
+}
+
+const maxMilestoneDescriptionLen = 2000
+
+// handleSetMilestoneDescriptions: POST /api/campaigns/{id}/milestones/metadata
+// — stores each milestone's optional plan description (see
+// store/milestone_metadata.go). Same trust level and no-ownership-check as
+// handleSetCampaignMetadata above — same reasoning applies.
+func (s *Server) handleSetMilestoneDescriptions(w http.ResponseWriter, r *http.Request) {
+	id, ok := parseID(w, r)
+	if !ok {
+		return
+	}
+	var req setMilestoneDescriptionsRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "请求体不是合法 JSON / malformed JSON body")
+		return
+	}
+	for i, d := range req.Descriptions {
+		if len(d) > maxMilestoneDescriptionLen {
+			writeError(w, http.StatusBadRequest, fmt.Sprintf("里程碑 %d 说明太长 / milestone %d description too long", i, i))
+			return
+		}
+	}
+	if err := s.store.SetMilestoneDescriptions(r.Context(), id, req.Descriptions); err != nil {
 		writeError(w, http.StatusInternalServerError, "写入失败 / write failed")
 		return
 	}
@@ -429,11 +530,10 @@ func writeError(w http.ResponseWriter, status int, msg string) {
 	writeJSON(w, status, map[string]string{"error": msg})
 }
 
-// withCORS 允许任意来源的跨域请求（无凭证，安全；POST 只对应上面那一个
-// 写接口，请求体就是 address+role，没有可滥用的敏感操作）。
-// withCORS allows cross-origin requests from any origin (no credentials; POST
-// only reaches the one write endpoint above, whose body is just
-// address+role — nothing sensitive to abuse).
+// withCORS 允许任意来源的跨域请求（无凭证；几个 POST 接口各自在 handler
+// 里做校验/限流，没有共享的敏感操作）。
+// withCORS allows cross-origin requests from any origin (no credentials; each
+// POST endpoint validates/limits itself in its handler — nothing shared to abuse).
 func withCORS(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Access-Control-Allow-Origin", "*")
