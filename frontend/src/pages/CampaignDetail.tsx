@@ -5,6 +5,7 @@ import type { ActivityEvent, Campaign, Donation, Milestone, MilestoneState } fro
 import {
   activityEventLabel,
   campaignTitle,
+  etherscanAddressUrl,
   etherscanTxUrl,
   milestoneStatusText,
   progressPercent,
@@ -178,7 +179,15 @@ export default function CampaignDetail() {
                 </svg>
               )}
               <span>
-                {shortAddress(campaign.charity)}
+                <a
+                  href={etherscanAddressUrl(campaign.charity)}
+                  target="_blank"
+                  rel="noreferrer"
+                  title="See this charity's wallet on Etherscan — including where released funds went next"
+                  className="underline decoration-dotted underline-offset-2 transition-colors hover:text-ink"
+                >
+                  {shortAddress(campaign.charity)}
+                </a>
                 {verified ? ' · Verified' : ''}
               </span>
             </div>

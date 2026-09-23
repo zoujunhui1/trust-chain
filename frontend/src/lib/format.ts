@@ -64,6 +64,12 @@ export function etherscanTxUrl(txHash: string): string {
   return `https://sepolia.etherscan.io/tx/${txHash}`
 }
 
+// address -> its Sepolia Etherscan page. A charity's wallet is public, so this
+// is how anyone can see where released funds went afterwards.
+export function etherscanAddressUrl(address: string): string {
+  return `https://sepolia.etherscan.io/address/${address}`
+}
+
 // Shared with TransparencyDashboard's global feed and CampaignDetail's
 // per-campaign timeline, so the two read the same event the same way.
 const ACTIVITY_LABEL: Record<ActivityEventType, (a: ActivityEvent) => string> = {
