@@ -179,17 +179,19 @@ export default function CampaignDetail() {
                 </svg>
               )}
               <span>
-                <a
-                  href={etherscanAddressUrl(campaign.charity)}
-                  target="_blank"
-                  rel="noreferrer"
-                  title="See this charity's wallet on Etherscan — including where released funds went next"
-                  className="underline decoration-dotted underline-offset-2 transition-colors hover:text-ink"
-                >
-                  {shortAddress(campaign.charity)}
-                </a>
+                {shortAddress(campaign.charity)}
                 {verified ? ' · Verified' : ''}
               </span>
+              <a
+                href={etherscanAddressUrl(campaign.charity)}
+                target="_blank"
+                rel="noreferrer"
+                title="See where the funds released to this charity went next"
+                className="ml-1 inline-flex items-center gap-1 rounded-full border px-2.5 py-0.5 text-xs font-medium transition-colors hover:bg-accent-tint"
+                style={{ borderColor: theme.accent, color: theme.accent }}
+              >
+                View wallet on Etherscan ↗
+              </a>
             </div>
 
             <div className="mt-3 flex items-center gap-3">
