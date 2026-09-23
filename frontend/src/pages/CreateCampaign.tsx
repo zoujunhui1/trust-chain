@@ -101,31 +101,38 @@ export default function CreateCampaign() {
       setTheme('')
 
       if (id !== null && receipt) {
-        // Both calls are independent inserts (no FK between campaigns and
-        // campaign_metadata — see that table's schema comment), so they can
-        // go out in parallel and fail independently.
-        createCampaignRecord({
-          id,
-          charity,
-          milestoneAmountsWei: amounts.map((a) => parseEther(a).toString()),
-          createdBlock: receipt.blockNumber,
-          createdTx: receipt.hash,
-        }).catch((err) => {
-          setRecordSaveError(err instanceof Error ? err.message : 'Failed to save the campaign record.')
-        })
-        setCampaignMetadata(id, {
-          title: savedTitle,
-          description: savedDescription || undefined,
-          theme: savedTheme || undefined,
-        }).catch((err) => {
-          setMetadataSaveError(err instanceof Error ? err.message : 'Failed to save the campaign details.')
-        })
-        setMilestoneDescriptions(id, savedMilestoneDescriptions).catch((err) => {
-          setMilestoneDescSaveError(err instanceof Error ? err.message : 'Failed to save the milestone descriptions.')
-        })
-        // It's already in the campaigns list (see createCampaignRecord above)
-        // — go straight there instead of making the charity click through.
-        navigate('/')
+        // The three saves are independent (no FK between campaigns and
+        // campaign_metadata — see that table's schema comment), so they go out
+        // in parallel and fail independently. We wait for all of them before
+        // leaving: navigating right away races the list page's GET against the
+        // insert, and the new campaign wouldn't show up until a refresh.
+        const results = await Promise.allSettled([
+          createCampaignRecord({
+            id,
+            charity,
+            milestoneAmountsWei: amounts.map((a) => parseEther(a).toString()),
+            createdBlock: receipt.blockNumber,
+            createdTx: receipt.hash,
+          }),
+          setCampaignMetadata(id, {
+            title: savedTitle,
+            description: savedDescription || undefined,
+            theme: savedTheme || undefined,
+          }),
+          setMilestoneDescriptions(id, savedMilestoneDescriptions),
+        ])
+        const errMsg = (r: PromiseSettledResult<unknown>, fallback: string) =>
+          r.status === 'rejected' ? (r.reason instanceof Error ? r.reason.message : fallback) : null
+        const recordErr = errMsg(results[0], 'Failed to save the campaign record.')
+        const metadataErr = errMsg(results[1], 'Failed to save the campaign details.')
+        const milestoneErr = errMsg(results[2], 'Failed to save the milestone descriptions.')
+        if (recordErr) setRecordSaveError(recordErr)
+        if (metadataErr) setMetadataSaveError(metadataErr)
+        if (milestoneErr) setMilestoneDescSaveError(milestoneErr)
+
+        // Only leave if everything saved — otherwise stay so the error banners
+        // above are visible. On success the campaign is already in the list.
+        if (!recordErr && !metadataErr && !milestoneErr) navigate('/')
       }
     } catch (err) {
       setStatus('error')

@@ -17,6 +17,7 @@ import { useWallet } from '../lib/wallet'
 import MilestoneChip from '../components/MilestoneChip'
 import MilestoneReceiptPanel from '../components/MilestoneReceiptPanel'
 import DonationPanel from '../components/DonationPanel'
+import FundsFlow from '../components/FundsFlow'
 
 // Same palette as MilestoneChip, just as a filled dot for the timeline below.
 const MILESTONE_DOT_CLASSES: Record<MilestoneState, string> = {
@@ -142,6 +143,8 @@ export default function CampaignDetail() {
               {progressPercent(campaign.raised, campaign.goal)}% funded
             </p>
           </div>
+
+          <FundsFlow campaign={campaign} milestones={milestones} />
 
           <div className="flex flex-col gap-10 pb-16 lg:flex-row">
             <div className="flex-1">
