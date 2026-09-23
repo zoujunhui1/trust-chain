@@ -12,9 +12,23 @@ interface MilestoneReceiptPanelProps {
   goalReached: boolean
   isCharity: boolean // connected wallet === this campaign's charity
   accent: string
+  // Tell the page a tx of ours just confirmed on-chain, so it can show the new
+  // state now instead of waiting for the indexer (see CampaignDetail).
+  onStateChange: (idx: number, state: MilestoneState, receiptHash?: string) => void
 }
 
 type ActionStatus = 'idle' | 'pending' | 'success' | 'error'
+
+// ethers' errors carry a long dump (calldata, tx object…); show only the
+// short reason, e.g. "user rejected action" or the contract's revert text.
+function txErrorMessage(err: unknown, fallback: string): string {
+  if (err && typeof err === 'object') {
+    const e = err as { reason?: string; shortMessage?: string }
+    if (e.reason) return e.reason
+    if (e.shortMessage) return e.shortMessage
+  }
+  return err instanceof Error ? err.message.slice(0, 200) : fallback
+}
 
 // The charity-only controls for one milestone: "Release" while Locked, then
 // a file upload for "Submit Receipt" once Released. Renders nothing for a
@@ -27,6 +41,7 @@ export default function MilestoneReceiptPanel({
   goalReached,
   isCharity,
   accent,
+  onStateChange,
 }: MilestoneReceiptPanelProps) {
   const wallet = useWallet()
   const [releaseStatus, setReleaseStatus] = useState<ActionStatus>('idle')
@@ -54,9 +69,10 @@ export default function MilestoneReceiptPanel({
       const tx = await releaseMilestone(signer, campaignId, milestone.idx)
       await tx.wait()
       setReleaseStatus('success')
+      onStateChange(milestone.idx, 1)
     } catch (err) {
       setReleaseStatus('error')
-      setReleaseError(err instanceof Error ? err.message : 'Transaction failed.')
+      setReleaseError(txErrorMessage(err, 'Transaction failed.'))
     }
   }
 
@@ -69,6 +85,7 @@ export default function MilestoneReceiptPanel({
       const signer = await wallet.getSigner()
       const tx = await submitReceipt(signer, campaignId, milestone.idx, hash)
       await tx.wait()
+      onStateChange(milestone.idx, 2, hash)
       const uploaded = await uploadMilestoneReceipt(campaignId, milestone.idx, file, note.trim() || undefined)
       setJustUploaded({ fileName: uploaded.fileName, sha256: uploaded.sha256 })
       setReceiptStatus('success')
@@ -76,7 +93,7 @@ export default function MilestoneReceiptPanel({
       setNote('')
     } catch (err) {
       setReceiptStatus('error')
-      setReceiptError(err instanceof Error ? err.message : 'Submitting the receipt failed.')
+      setReceiptError(txErrorMessage(err, 'Submitting the receipt failed.'))
     }
   }
 
@@ -121,11 +138,6 @@ export default function MilestoneReceiptPanel({
           </button>
           {releaseStatus === 'error' && releaseError && (
             <p className="mt-2 text-xs text-red-600">{releaseError}</p>
-          )}
-          {releaseStatus === 'success' && (
-            <p className="mt-2 text-xs text-proven">
-              Released — refresh in a minute or two to see it reflected here, then submit the receipt.
-            </p>
           )}
         </>
       )}

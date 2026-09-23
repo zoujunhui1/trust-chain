@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { parseEther } from 'ethers'
 import type { Donation } from '../lib/api'
 import { relativeTime, shortAddress, weiToEth } from '../lib/format'
 import { donate } from '../lib/escrow'
@@ -10,6 +11,9 @@ interface DonationPanelProps {
   // Ties the panel's accent to the campaign's theme (lib/theme.ts) so the
   // donate CTA visually matches the card/hero the donor arrived from.
   accent: string
+  // Called once our own donation tx is confirmed on-chain, before the indexer
+  // has it, so the page can show it right away instead of after a refresh.
+  onDonated: (pending: { txHash: string; amountWei: string; donor: string }) => void
 }
 
 type TxStatus = 'idle' | 'pending' | 'success' | 'error'
@@ -24,7 +28,7 @@ function avatarColor(address: string): string {
   return AVATAR_PALETTE[sum % AVATAR_PALETTE.length]
 }
 
-export default function DonationPanel({ campaignId, donations, accent }: DonationPanelProps) {
+export default function DonationPanel({ campaignId, donations, accent, onDonated }: DonationPanelProps) {
   const wallet = useWallet()
   const [amount, setAmount] = useState('')
   const [status, setStatus] = useState<TxStatus>('idle')
@@ -42,6 +46,7 @@ export default function DonationPanel({ campaignId, donations, accent }: Donatio
       const tx = await donate(signer, campaignId, amount)
       setTxHash(tx.hash)
       await tx.wait()
+      onDonated({ txHash: tx.hash, amountWei: parseEther(amount).toString(), donor: wallet.address ?? '' })
       setStatus('success')
       setAmount('')
     } catch (err) {
@@ -158,7 +163,7 @@ export default function DonationPanel({ campaignId, donations, accent }: Donatio
           >
             view on Etherscan
           </a>
-          . It'll show up below once the indexer picks it up.
+          . It's listed below as confirming and will update by itself — no need to refresh.
         </p>
       )}
 
@@ -179,7 +184,7 @@ export default function DonationPanel({ campaignId, donations, accent }: Donatio
                 </span>
                 <span className="flex-1 text-ink">{shortAddress(d.donor)}</span>
                 <span className="text-muted">
-                  {weiToEth(d.amount)} ETH · {relativeTime(d.createdAt)}
+                  {weiToEth(d.amount, 4)} ETH · {d.pending ? 'Confirming…' : relativeTime(d.createdAt)}
                 </span>
               </li>
             ))}

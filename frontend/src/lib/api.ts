@@ -59,6 +59,9 @@ export interface Donation {
   txHash: string
   logIndex: number
   createdAt: string
+  // Frontend-only: true for a donation we just sent that the indexer hasn't
+  // stored yet (see CampaignDetail's pending list). Never set by the API.
+  pending?: boolean
 }
 
 export interface Charity {

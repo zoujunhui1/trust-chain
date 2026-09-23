@@ -35,6 +35,13 @@ export default function CampaignDetail() {
   const [donations, setDonations] = useState<Donation[]>([])
   const [activity, setActivity] = useState<ActivityEvent[]>([])
   const [verified, setVerified] = useState(false)
+  // Donations we've sent and seen confirmed on-chain, but the indexer (which
+  // waits a few blocks) hasn't stored yet. Shown right away, dropped once the
+  // real row shows up in the API.
+  const [pending, setPending] = useState<Donation[]>([])
+  // Milestone changes we've just confirmed on-chain (release / receipt) that
+  // the indexer hasn't caught up with; layered over the API data until it does.
+  const [overrides, setOverrides] = useState<Record<number, { state: MilestoneState; receiptHash?: string }>>({})
   const [notFound, setNotFound] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const theme = campaign ? campaignTheme(campaign) : null
@@ -75,6 +82,64 @@ export default function CampaignDetail() {
       cancelled = true
     }
   }, [id])
+
+  const hasPending = pending.length > 0 || Object.keys(overrides).length > 0
+  useEffect(() => {
+    if (!hasPending || !id) return
+    let stopped = false
+    const startedAt = Date.now()
+    const tick = async () => {
+      const [c, d, a] = await Promise.allSettled([getCampaign(id), listDonations(id), listCampaignActivity(id)])
+      if (stopped) return
+      if (c.status === 'fulfilled') {
+        setCampaign(c.value.campaign)
+        setMilestones(c.value.milestones)
+        setOverrides((prev) => {
+          const next = { ...prev }
+          for (const m of c.value.milestones) {
+            if (next[m.idx] && m.state >= next[m.idx].state) delete next[m.idx]
+          }
+          return next
+        })
+      }
+      if (a.status === 'fulfilled') setActivity(a.value)
+      if (d.status === 'fulfilled') {
+        setDonations(d.value)
+        const seen = new Set(d.value.map((x) => x.txHash.toLowerCase()))
+        setPending((prev) => prev.filter((p) => !seen.has(p.txHash.toLowerCase())))
+      }
+      // Give up after 3 minutes rather than polling forever.
+      if (Date.now() - startedAt > 180_000) {
+        setPending([])
+        setOverrides({})
+      }
+    }
+    const timer = setInterval(tick, 4000)
+    return () => {
+      stopped = true
+      clearInterval(timer)
+    }
+  }, [hasPending, id])
+
+  function handleDonated(p: { txHash: string; amountWei: string; donor: string }) {
+    setPending((prev) => [
+      { donor: p.donor, amount: p.amountWei, blockNumber: 0, txHash: p.txHash, logIndex: 0, createdAt: new Date().toISOString(), pending: true },
+      ...prev,
+    ])
+  }
+
+  function handleMilestoneChanged(idx: number, state: MilestoneState, receiptHash?: string) {
+    setOverrides((prev) => ({ ...prev, [idx]: { state, receiptHash } }))
+  }
+  const shownMilestones = milestones.map((m) => {
+    const o = overrides[m.idx]
+    return o && o.state > m.state ? { ...m, state: o.state, receiptHash: o.receiptHash ?? m.receiptHash } : m
+  })
+
+  // What the page shows: the indexed numbers plus donations still in flight.
+  const pendingWei = pending.reduce((acc, p) => acc + BigInt(p.amount), 0n)
+  const shownCampaign = campaign ? { ...campaign, raised: (BigInt(campaign.raised) + pendingWei).toString() } : null
+  const shownDonations = [...pending, ...donations]
 
   return (
     <div className="mx-auto max-w-7xl px-6 sm:px-10 lg:px-16">
@@ -135,16 +200,16 @@ export default function CampaignDetail() {
             <div className="mt-6 h-2.5 w-full max-w-[700px] overflow-hidden rounded-full bg-border">
               <div
                 className="h-full rounded-full"
-                style={{ width: `${progressPercent(campaign.raised, campaign.goal)}%`, backgroundColor: theme.accent }}
+                style={{ width: `${progressPercent(shownCampaign!.raised, campaign.goal)}%`, backgroundColor: theme.accent }}
               />
             </div>
             <p className="mt-3 text-sm text-muted">
-              {weiToEth(campaign.raised)} ETH raised of {weiToEth(campaign.goal)} ETH goal ·{' '}
-              {progressPercent(campaign.raised, campaign.goal)}% funded
+              {weiToEth(shownCampaign!.raised, 4)} ETH raised of {weiToEth(campaign.goal, 4)} ETH goal ·{' '}
+              {progressPercent(shownCampaign!.raised, campaign.goal)}% funded
             </p>
           </div>
 
-          <FundsFlow campaign={campaign} milestones={milestones} />
+          <FundsFlow campaign={shownCampaign!} milestones={shownMilestones} />
 
           <div className="flex flex-col gap-10 pb-16 lg:flex-row">
             <div className="flex-1">
@@ -157,7 +222,7 @@ export default function CampaignDetail() {
               <div className="mt-6 rounded-xl border border-border bg-white p-5 shadow-sm">
                 <ol className="relative">
                   <span className="absolute left-4 top-4 bottom-4 w-px bg-border" aria-hidden="true" />
-                  {milestones.map((m, i) => (
+                  {shownMilestones.map((m, i) => (
                     <li key={m.idx} className={`relative flex gap-4 ${i > 0 ? 'mt-6' : ''}`}>
                       <span
                         className={`relative z-10 flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-xs font-semibold ${MILESTONE_DOT_CLASSES[m.state]}`}
@@ -170,7 +235,7 @@ export default function CampaignDetail() {
                           <MilestoneChip state={m.state} />
                         </div>
                         <p className="mt-1 text-sm text-muted">
-                          {weiToEth(m.amount)} ETH · {milestoneStatusText(m, m.idx, campaign)}
+                          {weiToEth(m.amount, 4)} ETH · {milestoneStatusText(m, m.idx, shownCampaign!)}
                         </p>
                         {m.description && <p className="mt-1 text-sm text-ink">{m.description}</p>}
 
@@ -181,10 +246,11 @@ export default function CampaignDetail() {
                         <MilestoneReceiptPanel
                           campaignId={campaign.id}
                           milestone={m}
-                          prevState={i > 0 ? milestones[i - 1].state : undefined}
-                          goalReached={BigInt(campaign.raised) >= BigInt(campaign.goal)}
+                          prevState={i > 0 ? shownMilestones[i - 1].state : undefined}
+                          goalReached={BigInt(shownCampaign!.raised) >= BigInt(campaign.goal)}
                           isCharity={wallet.address?.toLowerCase() === campaign.charity.toLowerCase()}
                           accent={theme.accent}
+                          onStateChange={handleMilestoneChanged}
                         />
                       </div>
                     </li>
@@ -193,7 +259,7 @@ export default function CampaignDetail() {
               </div>
             </div>
 
-            <DonationPanel campaignId={campaign.id} donations={donations} accent={theme.accent} />
+            <DonationPanel campaignId={campaign.id} donations={shownDonations} accent={theme.accent} onDonated={handleDonated} />
           </div>
 
           <div className="pb-16">
