@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState } from 'react'
+import { Fragment, useEffect, useRef, useState } from 'react'
+import { Link } from 'react-router-dom'
 import { sendChatMessage } from '../lib/api'
 import type { ChatMessage } from '../lib/api'
 
@@ -34,6 +35,13 @@ export default function ChatWidget() {
     }
   }, [open])
 
+  // A link that lands on the page you're already on changes nothing visible,
+  // so close the panel and scroll up to make the click read as "it worked".
+  function closeAndTop() {
+    setOpen(false)
+    window.scrollTo({ top: 0, behavior: 'smooth' })
+  }
+
   async function submit(text: string) {
     const trimmed = text.trim()
     if (!trimmed || pending) return
@@ -53,10 +61,12 @@ export default function ChatWidget() {
   }
 
   return (
-    <div className="fixed bottom-6 right-6 z-20 flex flex-col items-end gap-3">
+    // The wrapper is always as big as the (possibly hidden) panel, so it must
+    // not catch clicks itself — only the open panel and the button do.
+    <div className="pointer-events-none fixed bottom-6 right-6 z-20 flex flex-col items-end gap-3">
       <div
         className={`flex h-[28rem] w-80 origin-bottom-right flex-col overflow-hidden rounded-2xl border border-border bg-white shadow-2xl transition-all duration-200 sm:w-96 ${
-          open ? 'scale-100 opacity-100' : 'pointer-events-none scale-90 opacity-0'
+          open ? 'pointer-events-auto scale-100 opacity-100' : 'pointer-events-none scale-90 opacity-0'
         }`}
       >
         <div
@@ -84,7 +94,7 @@ export default function ChatWidget() {
         </div>
 
         <div ref={scrollRef} className="flex-1 space-y-3 overflow-y-auto px-4 py-4">
-          <ChatBubble role="assistant" content={GREETING} />
+          <ChatBubble role="assistant" content={GREETING} onNavigate={closeAndTop} />
 
           {messages.length === 0 && (
             <div className="flex flex-col items-start gap-2 pl-1">
@@ -102,7 +112,7 @@ export default function ChatWidget() {
           )}
 
           {messages.map((m, i) => (
-            <ChatBubble key={i} role={m.role} content={m.content} />
+            <ChatBubble key={i} role={m.role} content={m.content} onNavigate={closeAndTop} />
           ))}
           {pending && <TypingBubble />}
           {error && (
@@ -148,7 +158,7 @@ export default function ChatWidget() {
         type="button"
         onClick={() => setOpen((prev) => !prev)}
         aria-label={open ? 'Close chat assistant' : 'Open chat assistant'}
-        className="flex h-14 w-14 items-center justify-center rounded-full text-2xl text-white shadow-lg transition-transform hover:scale-105 active:scale-95"
+        className="pointer-events-auto flex h-14 w-14 items-center justify-center rounded-full text-2xl text-white shadow-lg transition-transform hover:scale-105 active:scale-95"
         style={{ background: 'linear-gradient(135deg, #1e3a5f, #7c3aed)' }}
       >
         {open ? '✕' : '💬'}
@@ -157,7 +167,15 @@ export default function ChatWidget() {
   )
 }
 
-function ChatBubble({ role, content }: { role: 'user' | 'assistant'; content: string }) {
+function ChatBubble({
+  role,
+  content,
+  onNavigate,
+}: {
+  role: 'user' | 'assistant'
+  content: string
+  onNavigate: () => void
+}) {
   const isUser = role === 'user'
   return (
     <div className={`flex animate-[fade-in_0.15s_ease-out] ${isUser ? 'justify-end' : 'justify-start'}`}>
@@ -168,10 +186,32 @@ function ChatBubble({ role, content }: { role: 'user' | 'assistant'; content: st
             : 'rounded-2xl rounded-bl-md bg-accent-tint text-ink'
         }`}
       >
-        {content}
+        {isUser ? content : renderWithLinks(content, onNavigate)}
       </p>
     </div>
   )
+}
+
+// The assistant is told (backend/internal/api/chat.go) to link site pages as
+// [label](/path). Only same-site paths become links — anything else stays as
+// plain text, so a model slip can't turn into an outbound link.
+const LINK_RE = /\[([^\]]+)\]\((\/(?!\/)[^)\s]*)\)/g
+
+function renderWithLinks(text: string, onNavigate: () => void) {
+  const out: React.ReactNode[] = []
+  let last = 0
+  for (const m of text.matchAll(LINK_RE)) {
+    const idx = m.index ?? 0
+    if (idx > last) out.push(<Fragment key={`t${idx}`}>{text.slice(last, idx)}</Fragment>)
+    out.push(
+      <Link key={`l${idx}`} to={m[2]} onClick={onNavigate} className="font-medium text-accent underline underline-offset-2">
+        {m[1]}
+      </Link>,
+    )
+    last = idx + m[0].length
+  }
+  if (last < text.length) out.push(<Fragment key="tend">{text.slice(last)}</Fragment>)
+  return out
 }
 
 function TypingBubble() {
