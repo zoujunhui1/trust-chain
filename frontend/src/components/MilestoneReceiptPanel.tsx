@@ -97,7 +97,9 @@ export default function MilestoneReceiptPanel({
     }
   }
 
-  if (justUploaded) {
+  // Once the page has the real uploaded-file card (milestone.receiptFileName
+  // comes from the API), this stopgap box would just duplicate it.
+  if (justUploaded && !milestone.receiptFileName) {
     return (
       <div className="mt-3 rounded-lg border border-border bg-page/60 p-3 text-sm">
         <p className="font-medium text-proven">Receipt submitted and uploaded ✓</p>
@@ -113,10 +115,7 @@ export default function MilestoneReceiptPanel({
             view file
           </a>
         </p>
-        <p className="mt-1 text-xs text-muted">
-          It can take a minute or two for the on-chain confirmation to catch up and mark this milestone
-          Proven.
-        </p>
+        <p className="mt-1 text-xs text-muted">Refreshing the milestone details…</p>
       </div>
     )
   }
